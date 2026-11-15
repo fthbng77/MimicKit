@@ -14,6 +14,9 @@ def build_env(env_file, engine_file, num_envs, device, visualize, record_video=F
     if (env_name == "char"):
         import envs.char_env as char_env
         env = char_env.CharEnv(env_config=env_config, engine_config=engine_config, num_envs=num_envs, device=device, visualize=visualize, record_video=record_video)
+    elif (env_name == "combat"):
+        import envs.combat_env as combat_env
+        env = combat_env.CombatEnv(env_config=env_config, engine_config=engine_config, num_envs=num_envs, device=device, visualize=visualize, record_video=record_video)
     elif (env_name == "deepmimic"):
         import envs.deepmimic_env as deepmimic_env
         env = deepmimic_env.DeepMimicEnv(env_config=env_config, engine_config=engine_config, num_envs=num_envs, device=device, visualize=visualize, record_video=record_video)

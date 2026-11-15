@@ -1,0 +1,6 @@
+--mode test
+--num_envs 1
+--visualize true
+--engine_config data/engines/newton_engine.yaml
+--env_config data/envs/combat_humanoid_env.yaml
+--out_dir output/combat_humanoid

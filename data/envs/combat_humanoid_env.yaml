@@ -1,0 +1,33 @@
+env_name: "combat"
+
+char_file: "data/assets/humanoid/humanoid.xml"
+camera_mode: "track"
+
+episode_length: 10.0
+global_obs: False
+root_height_obs: True
+zero_center_action: True
+
+init_pose: [0, 0, 0.882416, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1.5708, 0, 0, 0, -1.5708, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+opponent_start_pos: [2.0, 0.0, 0.882416]
+opponent_start_rot: [0.0, 0.0, 1.0, 0.0]
+
+attack_bodies: ["right_hand", "left_hand", "right_foot", "left_foot"]
+target_bodies: ["torso", "head", "pelvis"]
+hit_distance: 0.18
+hit_cooldown: 0.25
+hit_damage: 10.0
+hit_reward: 1.0
+max_health: 100.0
+
+punch_demo: true
+punch_motion_file: "data/motions/humanoid/humanoid_punch.pkl"
+punch_demo_period: 3.0
+punch_demo_yaw: -0.638
+punch_active_start: 0.70
+punch_active_end: 1.30
+stagger_duration: 0.35
+stagger_speed: 3.0
+
+key_bodies: ["head", "right_hand", "left_hand", "right_foot", "left_foot"]
+opponent_key_bodies: ["head", "right_hand", "left_hand", "right_foot", "left_foot"]
