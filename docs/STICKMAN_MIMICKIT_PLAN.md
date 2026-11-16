@@ -48,6 +48,19 @@ yalnızca aktif zaman aralığında hasar verebilir ve bir yumruk döngüsünde 
 bir hit üretebilir. İsabet sonrasında rakibin canı azalır, kısa süreli sendeleme
 durumu oluşur ve rakibe geriye doğru hız uygulanır.
 
+Bu darbe/can dilimi tamamlandı. Combat ortamı artık saldırı ve hedef vücut
+bölgelerini, relatif kök konum/hızını, el/ayak hareket hızını, temas kuvvetini,
+aktif saldırı penceresini, hasarı, iki tarafın can alanlarını ve knockdown
+durumunu raporluyor. Hit hesabı mesafe, hareket/ yaklaşma hızı ve mevcut temas
+kuvveti sinyallerini birlikte değerlendiriyor.
+
+Sonraki dilimde rakip için aynı yumruk hareketinin ters yönde oynatılması eklendi.
+Artık iki karakter de saldırı penceresinde isabet üretebiliyor; rakip isabeti
+`fighter_health` değerini azaltıyor ve bu değer sıfıra indiğinde bölüm FAIL ile
+sonlanıyor. Böylece tek taraflı kontrollü demo yerine iki taraflı hasar akışı
+başlangıç seviyesinde doğrulanmış oldu. Henüz öğrenen rakip politikası veya
+oyuncu kontrolü değildir; saldırı davranışı tekrarlanabilir demo hareketidir.
+
 ## Aşama 1 — Resmî örneği anlamak
 
 Başarı ölçütü:
