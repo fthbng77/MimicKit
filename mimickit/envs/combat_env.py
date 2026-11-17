@@ -246,6 +246,7 @@ class CombatEnv(char_env.CharEnv):
         self._state_timer = torch.zeros((num_envs, 2), device=self._device)
         self._attack_cooldown = torch.zeros_like(self._state_timer)
         self._recover_timer = torch.zeros_like(self._state_timer)
+        self._attack_variant = torch.zeros((num_envs, 2), device=self._device, dtype=torch.long)
         self._combat_pos = torch.zeros((num_envs, 2, 3), device=self._device)
 
         if self._punch_demo_enabled:
@@ -271,6 +272,8 @@ class CombatEnv(char_env.CharEnv):
             self._combat_state[env_ids] = CombatState.IDLE
             self._state_timer[env_ids] = 0.0
             self._recover_timer[env_ids] = 0.0
+            self._attack_variant[env_ids, 0] = 0
+            self._attack_variant[env_ids, 1] = 1
             self._attack_cooldown[env_ids, 0] = 0.35
             self._attack_cooldown[env_ids, 1] = 1.05
             self._combat_pos[env_ids, 0] = self._engine.get_root_pos(self._get_char_id())[env_ids]
@@ -432,6 +435,7 @@ class CombatEnv(char_env.CharEnv):
             ready &= self._combat_state[:, 1 - side] != CombatState.ATTACK
             self._enter_state(side, deciding & ~far & ~ready, CombatState.IDLE)
             self._enter_state(side, ready, CombatState.ATTACK)
+            self._attack_variant[ready, side] = 1 - self._attack_variant[ready, side]
             self._attack_cooldown[ready, side] = self._attack_duration + self._sample_duration(
                 self._attack_cooldown_range, int(ready.sum()))
             consumed = self._attack_hit_consumed if side == 0 else self._opponent_punch_hit_consumed
@@ -448,8 +452,14 @@ class CombatEnv(char_env.CharEnv):
     def _pose_combatant(self, side, obj_id, lib, motion_ids, active):
         state = self._combat_state[:, side]
         attacking = state == CombatState.ATTACK
-        time = torch.where(attacking, self._state_timer[:, side], 0.0)
-        active[:] = attacking & (time >= self._punch_active_start) & (time <= self._punch_active_end)
+        variant = self._attack_variant[:, side]
+        punch_time = self._state_timer[:, side] * torch.where(
+            variant == 0, torch.full_like(variant, 0.78, dtype=torch.float32),
+            torch.ones_like(variant, dtype=torch.float32))
+        time = torch.where(attacking, punch_time, 0.0)
+        active_start = torch.where(variant == 0, 0.45, self._punch_active_start)
+        active_end = torch.where(variant == 0, 0.95, self._punch_active_end)
+        active[:] = attacking & (time >= active_start) & (time <= active_end)
         pos = self._combat_pos[:, side].clone()
         delta = self._combat_pos[:, 1 - side, :2] - pos[:, :2]
         distance = torch.linalg.vector_norm(delta, dim=-1).clamp_min(1e-6)
@@ -503,6 +513,7 @@ class CombatEnv(char_env.CharEnv):
                 self._reference_joint_ids[side])
             guard_mask = (state != CombatState.ATTACK) & (state != CombatState.DOWN)
             dof_pos[guard_mask] = reference[guard_mask]
+            joint_rot = self._kin_char_model.dof_to_rot(dof_pos)
         alive_ids = (state != CombatState.DOWN).nonzero(as_tuple=False).flatten()
         body_pos, body_rot = self._kin_char_model.forward_kinematics(pos, root_rot, joint_rot)
         for setter, value in ((self._engine.set_root_pos, pos),
@@ -786,6 +797,8 @@ class CombatEnv(char_env.CharEnv):
             self._info["fighter_hit"] = self._opponent_hit_buf
             self._info["opponent_attack_active"] = self._opponent_attack_active_buf
             self._info["opponent_attack_speed"] = self._opponent_attack_speed_buf
+            self._info["fighter_attack_variant"] = self._attack_variant[:, 0]
+            self._info["opponent_attack_variant"] = self._attack_variant[:, 1]
         else:
             self._info["combat_hit"] = self._hit_buf[env_ids]
             self._info["opponent_health"] = self._opponent_health[env_ids]
@@ -800,5 +813,7 @@ class CombatEnv(char_env.CharEnv):
             self._info["fighter_hit"] = self._opponent_hit_buf[env_ids]
             self._info["opponent_attack_active"] = self._opponent_attack_active_buf[env_ids]
             self._info["opponent_attack_speed"] = self._opponent_attack_speed_buf[env_ids]
+            self._info["fighter_attack_variant"] = self._attack_variant[env_ids, 0]
+            self._info["opponent_attack_variant"] = self._attack_variant[env_ids, 1]
         return
 

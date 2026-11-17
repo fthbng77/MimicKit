@@ -69,3 +69,11 @@ Ana dosyalar:
 - `mimickit/envs/boxing_controller.py`
 - `data/envs/combat_humanoid_env.yaml`
 - `tools/combat_state_smoke.py`
+
+## Son görünür dövüş davranışı
+
+Reference control artık varsayılan açık. Saldırı dışı durumlarda karakter guard
+eklem hedefinde tutulur. Saldırılar sırayla iki varyanta ayrılır: kısa jab ve
+daha uzun cross. `fighter_attack_variant` ile `opponent_attack_variant` alanları
+hangi varyantın çalıştığını raporlar. Saldırıdan sonra state machine recovery
+ve cooldown uygular; aynı yumruk karesi her simülasyon adımında tekrarlanmaz.
