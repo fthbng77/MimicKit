@@ -73,6 +73,8 @@ class CombatEnv(char_env.CharEnv):
             preferred_distance=float(env_config.get("preferred_distance", 1.0)),
             retreat_distance=float(env_config.get("retreat_distance", 0.72)),
             guard_height=float(env_config.get("guard_height", 1.05)))
+        self._reference_control_enabled = bool(env_config.get("reference_control", False))
+        self._residual_scale = float(env_config.get("residual_scale", 0.25))
         self._opponent_ids = []
 
         super().__init__(env_config=env_config, engine_config=engine_config,
@@ -166,6 +168,14 @@ class CombatEnv(char_env.CharEnv):
             attack_body_ids, device=self._device, dtype=torch.long)
         self._target_body_ids = torch.tensor(
             target_body_ids, device=self._device, dtype=torch.long)
+
+        def joint_dof(name):
+            joint_id = next(i for i, joint in enumerate(self._kin_char_model._joints)
+                            if joint is not None and joint.name == name)
+            return self._kin_char_model.get_joint_dof_idx(joint_id)
+        self._reference_joint_ids = (
+            joint_dof("right_shoulder"), joint_dof("right_shoulder") + 1,
+            joint_dof("right_elbow"))
 
         opponent_attack_body_ids = []
         for body_name in self._attack_body_names:
@@ -290,6 +300,22 @@ class CombatEnv(char_env.CharEnv):
             self._opponent_punch_hit_consumed[env_ids] = False
             self._opponent_attack_speed_buf[env_ids] = 0.0
             self._opponent_approach_speed_buf[env_ids] = 0.0
+        return
+
+    def _apply_action(self, actions):
+        if not self._reference_control_enabled:
+            return super()._apply_action(actions)
+        intent, _, _, _ = self._boxing_reference.compute(
+            self._engine.get_root_pos(self._get_char_id()),
+            self._engine.get_root_pos(self._get_opponent_id()),
+            self._combat_state[:, 0], self._fighter_health, self._opponent_health)
+        base = self._init_dof_pos.expand(actions.shape[0], -1)
+        reference = self._boxing_reference.reference_action(
+            base, intent, 0, self._reference_joint_ids)
+        residual = actions - base
+        target = reference + self._residual_scale * residual
+        target = torch.minimum(torch.maximum(target, self._action_bound_low), self._action_bound_high)
+        self._engine.set_cmd(self._get_char_id(), target)
         return
 
     def _update_misc(self):

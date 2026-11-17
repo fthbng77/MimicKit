@@ -44,3 +44,18 @@ class BoxingReferenceController:
         guard_target[:, :2] = fighter_pos[:, :2] + direction * self.preferred_distance
         guard_target[:, 2] = self.guard_height
         return intent, direction, distance, guard_target
+
+    def reference_action(self, init_dof, intent, side, joint_ids):
+        """Build simple guard/punch targets; residual policy refines them."""
+        action = init_dof.clone()
+        shoulder_x, shoulder_y, elbow = joint_ids
+        live = intent != BoxingIntent.GUARD
+        zeros = torch.zeros_like(intent, dtype=action.dtype)
+        jab = intent == BoxingIntent.JAB
+        action[:, shoulder_x] += torch.where(jab, torch.full_like(zeros, -0.45), zeros)
+        action[:, shoulder_y] += torch.where(
+            jab, torch.full_like(zeros, 0.25 if side == 0 else -0.25), zeros)
+        action[:, elbow] += torch.where(
+            jab, torch.full_like(zeros, 0.55 if side == 0 else -0.55),
+            torch.where(live, torch.full_like(zeros, 0.25 if side == 0 else -0.25), zeros))
+        return action
