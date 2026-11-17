@@ -48,5 +48,5 @@ retreat_duration: 0.5
 preferred_distance: 1.0
 retreat_distance: 0.72
 guard_height: 1.05
-reference_control: false
+reference_control: true
 residual_scale: 0.25

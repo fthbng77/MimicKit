@@ -174,8 +174,10 @@ class CombatEnv(char_env.CharEnv):
                             if joint is not None and joint.name == name)
             return self._kin_char_model.get_joint_dof_idx(joint_id)
         self._reference_joint_ids = (
-            joint_dof("right_shoulder"), joint_dof("right_shoulder") + 1,
-            joint_dof("right_elbow"))
+            (joint_dof("right_shoulder"), joint_dof("right_shoulder") + 1,
+             joint_dof("right_elbow")),
+            (joint_dof("left_shoulder"), joint_dof("left_shoulder") + 1,
+             joint_dof("left_elbow")))
 
         opponent_attack_body_ids = []
         for body_name in self._attack_body_names:
@@ -311,7 +313,7 @@ class CombatEnv(char_env.CharEnv):
             self._combat_state[:, 0], self._fighter_health, self._opponent_health)
         base = self._init_dof_pos.expand(actions.shape[0], -1)
         reference = self._boxing_reference.reference_action(
-            base, intent, 0, self._reference_joint_ids)
+            base, intent, 0, self._reference_joint_ids[0])
         residual = actions - base
         target = reference + self._residual_scale * residual
         target = torch.minimum(torch.maximum(target, self._action_bound_low), self._action_bound_high)
@@ -490,6 +492,17 @@ class CombatEnv(char_env.CharEnv):
         root_ang_vel[~attacking] = 0
         dof_vel[~attacking] = 0
         dof_pos = lib.joint_rot_to_dof(joint_rot)
+        if self._reference_control_enabled:
+            intent = torch.full_like(state, 0, dtype=torch.long)
+            intent[state == CombatState.APPROACH] = 1
+            intent[state == CombatState.ATTACK] = 2
+            intent[state == CombatState.RECOVER] = 3
+            intent[state == CombatState.RETREAT] = 4
+            reference = self._boxing_reference.reference_action(
+                self._init_dof_pos.expand_as(dof_pos), intent, side,
+                self._reference_joint_ids[side])
+            guard_mask = (state != CombatState.ATTACK) & (state != CombatState.DOWN)
+            dof_pos[guard_mask] = reference[guard_mask]
         alive_ids = (state != CombatState.DOWN).nonzero(as_tuple=False).flatten()
         body_pos, body_rot = self._kin_char_model.forward_kinematics(pos, root_rot, joint_rot)
         for setter, value in ((self._engine.set_root_pos, pos),

@@ -1,8 +1,0 @@
---mode test
---num_envs 32
---test_episodes 32
---engine_config data/engines/newton_engine.yaml
---env_config data/envs/stepping_humanoid_env.yaml
---agent_config data/agents/balance_humanoid_ppo_agent.yaml
---model_file output/stepping_humanoid/model.pt
---visualize false
