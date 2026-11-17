@@ -1,3 +1,5 @@
+from enum import IntEnum
+
 import numpy as np
 import torch
 
@@ -6,17 +8,23 @@ import envs.char_env as char_env
 import envs.base_env as base_env
 import anim.motion_lib as motion_lib
 import util.torch_util as torch_util
+import util.camera as camera
+from envs.boxing_controller import BoxingReferenceController
 from util.logger import Logger
 
 
-class CombatEnv(char_env.CharEnv):
-    """Two-character sandbox for building the combat task incrementally.
+class CombatState(IntEnum):
+    IDLE = 0
+    APPROACH = 1
+    ATTACK = 2
+    RECOVER = 3
+    RETREAT = 4
+    HIT_STUN = 5
+    DOWN = 6
 
-    The first character is the learning character and uses the normal
-    CharEnv action space. The second character is currently passive, but is
-    fully simulated so that opponent observations and contact logic can be
-    added without changing the scene layout later.
-    """
+
+class CombatEnv(char_env.CharEnv):
+    """Two-character combat sandbox with independently timed demo controllers."""
 
     def __init__(self, env_config, engine_config, num_envs, device, visualize,
                  record_video=False):
@@ -27,11 +35,10 @@ class CombatEnv(char_env.CharEnv):
             env_config.get("opponent_start_rot", [0.0, 0.0, 1.0, 0.0]),
             dtype=np.float32)
         self._ring_bounds = np.asarray(
-            env_config.get("ring_bounds", [-1.0, 3.0, -1.5, 1.5]),
+            env_config.get("ring_bounds", [-1.0, 3.0, -2.0, 2.0]),
             dtype=np.float32)
-        self._ring_rail_height = float(env_config.get("ring_rail_height", 0.8))
-        self._ring_rail_asset = env_config.get(
-            "ring_rail_asset", "data/assets/objects/ring_rail.xml")
+        self._ring_floor_height = float(env_config.get("ring_floor_height", 0.36))
+        self._ring_asset = env_config.get("ring_asset", "data/assets/objects/boxing_ring.xml")
         self._attack_body_names = env_config.get(
             "attack_bodies", ["right_hand", "left_hand", "right_foot", "left_foot"])
         self._target_body_names = env_config.get(
@@ -48,20 +55,24 @@ class CombatEnv(char_env.CharEnv):
         self._punch_demo_enabled = bool(env_config.get("punch_demo", False))
         self._punch_motion_file = env_config.get(
             "punch_motion_file", "data/motions/humanoid/humanoid_punch.pkl")
-        self._punch_demo_period = float(env_config.get("punch_demo_period", 3.0))
         self._punch_demo_yaw = float(env_config.get("punch_demo_yaw", -0.638))
         self._punch_active_start = float(env_config.get("punch_active_start", 0.70))
         self._punch_active_end = float(env_config.get("punch_active_end", 1.30))
         self._opponent_attack_enabled = bool(
             env_config.get("opponent_attack", False))
-        self._opponent_punch_period = float(
-            env_config.get("opponent_punch_period", self._punch_demo_period))
-        self._opponent_punch_phase = float(
-            env_config.get("opponent_punch_phase", 0.0))
-        self._opponent_punch_yaw = float(
-            env_config.get("opponent_punch_yaw", self._punch_demo_yaw + np.pi))
         self._stagger_duration = float(env_config.get("stagger_duration", 0.35))
         self._stagger_speed = float(env_config.get("stagger_speed", 1.5))
+        self._attack_duration = float(env_config.get("attack_duration", 1.5))
+        self._recover_range = env_config.get("recover_duration", [1.0, 1.5])
+        self._attack_cooldown_range = env_config.get("attack_cooldown", [1.5, 3.0])
+        self._attack_range = float(env_config.get("attack_range", 1.15))
+        self._approach_speed = float(env_config.get("approach_speed", 0.65))
+        self._retreat_duration = float(env_config.get("retreat_duration", 0.5))
+        self._boxing_reference = BoxingReferenceController(
+            attack_range=self._attack_range,
+            preferred_distance=float(env_config.get("preferred_distance", 1.0)),
+            retreat_distance=float(env_config.get("retreat_distance", 0.72)),
+            guard_height=float(env_config.get("guard_height", 1.05)))
         self._opponent_ids = []
 
         super().__init__(env_config=env_config, engine_config=engine_config,
@@ -91,27 +102,30 @@ class CombatEnv(char_env.CharEnv):
 
     def _build_ring(self, env_id):
         xmin, xmax, ymin, ymax = self._ring_bounds
-        z = self._ring_rail_height
-        rails = [
-            ([0.5 * (xmin + xmax), ymin, z], [0.0, 0.0, 0.0, 1.0]),
-            ([0.5 * (xmin + xmax), ymax, z], [0.0, 0.0, 0.0, 1.0]),
-            ([xmin, 0.5 * (ymin + ymax), z],
-             [0.0, 0.0, 0.7071068, 0.7071068]),
-            ([xmax, 0.5 * (ymin + ymax), z],
-             [0.0, 0.0, 0.7071068, 0.7071068]),
-        ]
-        for rail_pos, rail_rot in rails:
-            self._engine.create_obj(
-                env_id=env_id,
-                obj_type=engine.ObjType.rigid,
-                asset_file=self._ring_rail_asset,
-                name="ring_rail",
-                fix_root=True,
-                start_pos=np.asarray(rail_pos, dtype=np.float32),
-                start_rot=np.asarray(rail_rot, dtype=np.float32),
-                color=np.array([0.85, 0.1, 0.1], dtype=np.float32),
-            )
+        # Asset has a 4 m square fighting area, centered on its local origin.
+        if not np.allclose([xmax - xmin, ymax - ymin], [4.0, 4.0]):
+            raise ValueError("Boxing ring asset requires 4 x 4 metre ring_bounds")
+        self._engine.create_obj(
+            env_id=env_id,
+            obj_type=engine.ObjType.rigid,
+            asset_file=self._ring_asset,
+            name="boxing_ring",
+            fix_root=True,
+            start_pos=np.asarray([0.5 * (xmin + xmax), 0.5 * (ymin + ymax),
+                                  self._ring_floor_height], dtype=np.float32),
+        )
         return
+
+    def _build_camera(self, env_config):
+        xmin, xmax, ymin, ymax = self._ring_bounds
+        center = np.array([0.5 * (xmin + xmax), 0.5 * (ymin + ymax),
+                           self._ring_floor_height + 0.45])
+        self._camera = camera.Camera(
+            mode=camera.CameraMode[env_config.get("camera_mode", "still")],
+            engine=self._engine,
+            pos=center + np.array([4.8, -7.4, 4.8]),
+            target=center,
+            track_obj_id=self._get_char_id())
 
     def _get_opponent_id(self):
         return self._opponent_ids[0]
@@ -215,6 +229,13 @@ class CombatEnv(char_env.CharEnv):
         self._opponent_approach_speed_buf = torch.zeros(
             [num_envs], device=self._device, dtype=torch.float)
 
+        self._combat_state = torch.zeros((num_envs, 2), device=self._device,
+                                         dtype=torch.long)
+        self._state_timer = torch.zeros((num_envs, 2), device=self._device)
+        self._attack_cooldown = torch.zeros_like(self._state_timer)
+        self._recover_timer = torch.zeros_like(self._state_timer)
+        self._combat_pos = torch.zeros((num_envs, 2, 3), device=self._device)
+
         if self._punch_demo_enabled:
             self._punch_motion_lib = motion_lib.MotionLib(
                 motion_file=self._punch_motion_file,
@@ -222,24 +243,6 @@ class CombatEnv(char_env.CharEnv):
                 device=self._device)
             self._punch_motion_ids = torch.zeros(
                 [num_envs], device=self._device, dtype=torch.long)
-            self._punch_time_buf = torch.zeros(
-                [num_envs], device=self._device, dtype=torch.float)
-            self._punch_prev_time_buf = torch.zeros(
-                [num_envs], device=self._device, dtype=torch.float)
-
-            yaw_axis = torch.zeros([num_envs, 3], device=self._device)
-            yaw_axis[:, 2] = 1.0
-            yaw = torch.full(
-                [num_envs], self._punch_demo_yaw, device=self._device)
-            self._punch_yaw_quat = torch_util.axis_angle_to_quat(yaw_axis, yaw)
-
-            first_time = torch.zeros([num_envs], device=self._device)
-            first_frame = self._punch_motion_lib.calc_motion_frame(
-                self._punch_motion_ids, first_time)
-            first_root_pos = torch_util.quat_rotate(
-                self._punch_yaw_quat, first_frame[0])
-            self._punch_root_offset = self._init_root_pos.unsqueeze(0) - first_root_pos
-
         if self._opponent_attack_enabled:
             self._opponent_punch_motion_lib = motion_lib.MotionLib(
                 motion_file=self._punch_motion_file,
@@ -247,31 +250,21 @@ class CombatEnv(char_env.CharEnv):
                 device=self._device)
             self._opponent_punch_motion_ids = torch.zeros(
                 [num_envs], device=self._device, dtype=torch.long)
-            self._opponent_punch_time_buf = torch.zeros(
-                [num_envs], device=self._device, dtype=torch.float)
-            self._opponent_punch_prev_time_buf = torch.zeros(
-                [num_envs], device=self._device, dtype=torch.float)
-
-            yaw_axis = torch.zeros([num_envs, 3], device=self._device)
-            yaw_axis[:, 2] = 1.0
-            yaw = torch.full([num_envs], self._opponent_punch_yaw,
-                             device=self._device)
-            self._opponent_punch_yaw_quat = torch_util.axis_angle_to_quat(
-                yaw_axis, yaw)
-            first_time = torch.zeros([num_envs], device=self._device)
-            first_frame = self._opponent_punch_motion_lib.calc_motion_frame(
-                self._opponent_punch_motion_ids, first_time)
-            first_root_pos = torch_util.quat_rotate(
-                self._opponent_punch_yaw_quat, first_frame[0])
-            opponent_start = torch.as_tensor(
-                self._opponent_start_pos, device=self._device)
-            self._opponent_punch_root_offset = opponent_start.unsqueeze(0) - first_root_pos
         return
 
     def _reset_envs(self, env_ids):
         super()._reset_envs(env_ids)
         if len(env_ids) > 0:
             self._reset_opponent(env_ids)
+            self._combat_state[env_ids] = CombatState.IDLE
+            self._state_timer[env_ids] = 0.0
+            self._recover_timer[env_ids] = 0.0
+            self._attack_cooldown[env_ids, 0] = 0.35
+            self._attack_cooldown[env_ids, 1] = 1.05
+            self._combat_pos[env_ids, 0] = self._engine.get_root_pos(self._get_char_id())[env_ids]
+            self._combat_pos[env_ids, 1] = self._engine.get_root_pos(self._get_opponent_id())[env_ids]
+            self._set_character_color(self._get_char_id(), self._get_char_color(), env_ids)
+            self._set_character_color(self._get_opponent_id(), self._get_opponent_color(), env_ids)
             self._opponent_health[env_ids] = self._max_health
             self._fighter_health[env_ids] = self._max_health
             self._hit_cooldown_buf[env_ids] = 0.0
@@ -297,12 +290,6 @@ class CombatEnv(char_env.CharEnv):
             self._opponent_punch_hit_consumed[env_ids] = False
             self._opponent_attack_speed_buf[env_ids] = 0.0
             self._opponent_approach_speed_buf[env_ids] = 0.0
-            if self._punch_demo_enabled:
-                self._punch_time_buf[env_ids] = 0.0
-                self._punch_prev_time_buf[env_ids] = 0.0
-            if self._opponent_attack_enabled:
-                self._opponent_punch_time_buf[env_ids] = self._opponent_punch_phase
-                self._opponent_punch_prev_time_buf[env_ids] = 0.0
         return
 
     def _update_misc(self):
@@ -315,11 +302,16 @@ class CombatEnv(char_env.CharEnv):
             self._fighter_stagger_buf - self._engine.get_timestep(), 0.0)
         if torch.any(torch.logical_and(was_staggered, self._stagger_buf <= 0.0)):
             self._set_character_color(self._get_opponent_id(),
-                                      self._get_opponent_color())
+                                      self._get_opponent_color(),
+                                      ((was_staggered & (self._stagger_buf <= 0)) &
+                                       (self._opponent_health > 0)).nonzero().flatten())
         if torch.any(torch.logical_and(
                 was_fighter_staggered, self._fighter_stagger_buf <= 0.0)):
             self._set_character_color(self._get_char_id(),
-                                      self._get_char_color())
+                                      self._get_char_color(),
+                                      ((was_fighter_staggered & (self._fighter_stagger_buf <= 0)) &
+                                       (self._fighter_health > 0)).nonzero().flatten())
+        self._update_combat_states()
         if self._punch_demo_enabled:
             self._update_punch_demo()
         if self._opponent_attack_enabled:
@@ -327,6 +319,7 @@ class CombatEnv(char_env.CharEnv):
         self._enforce_ring_bounds()
         self._update_hits()
         self._update_opponent_hits()
+        self._enforce_ring_bounds()
         return
 
     def _enforce_ring_bounds(self):
@@ -336,7 +329,10 @@ class CombatEnv(char_env.CharEnv):
             clamped_pos = root_pos.clone()
             clamped_pos[:, 0] = torch.clamp(clamped_pos[:, 0], xmin, xmax)
             clamped_pos[:, 1] = torch.clamp(clamped_pos[:, 1], ymin, ymax)
-            changed = torch.any(torch.abs(clamped_pos - root_pos) > 1e-6, dim=-1)
+            changed = ((clamped_pos[:, 0] <= xmin + 1e-6) |
+                       (clamped_pos[:, 0] >= xmax - 1e-6) |
+                       (clamped_pos[:, 1] <= ymin + 1e-6) |
+                       (clamped_pos[:, 1] >= ymax - 1e-6))
             if not torch.any(changed):
                 continue
 
@@ -361,80 +357,142 @@ class CombatEnv(char_env.CharEnv):
             self._engine.set_body_rot(changed_ids, obj_id, body_rot)
         return
 
-    def _update_punch_demo(self):
+    def _enter_state(self, side, mask, state):
+        self._combat_state[mask, side] = state
+        self._state_timer[mask, side] = 0.0
+
+    def _sample_duration(self, bounds, count):
+        return torch.empty(count, device=self._device).uniform_(*bounds)
+
+    def _update_combat_states(self):
         dt = self._engine.get_timestep()
-        prev_time = self._punch_time_buf.clone()
-        self._punch_time_buf[:] = torch.remainder(
-            self._punch_time_buf + dt, self._punch_demo_period)
-        wrapped = self._punch_time_buf < prev_time
-        self._attack_hit_consumed[wrapped] = False
-        self._punch_prev_time_buf[:] = prev_time
-        self._attack_active_buf[:] = torch.logical_and(
-            self._punch_time_buf >= self._punch_active_start,
-            self._punch_time_buf <= self._punch_active_end)
+        self._state_timer += dt
+        self._attack_cooldown.sub_(dt).clamp_min_(0.0)
+        self._recover_timer.sub_(dt).clamp_min_(0.0)
+        distance = torch.linalg.vector_norm(
+            self._combat_pos[:, 1, :2] - self._combat_pos[:, 0, :2], dim=-1)
+        finished = (self._fighter_health <= 0) | (self._opponent_health <= 0)
+        for side, enabled in enumerate((self._punch_demo_enabled,
+                                        self._opponent_attack_enabled)):
+            state = self._combat_state[:, side].clone()
+            health = self._fighter_health if side == 0 else self._opponent_health
+            self._enter_state(side, finished & (health <= 0), CombatState.DOWN)
+            self._enter_state(side, finished & (health > 0), CombatState.IDLE)
+            if not enabled:
+                continue
+            live = ~finished
+            stun = (state == CombatState.HIT_STUN) & live
+            self._enter_state(side, stun & (self._state_timer[:, side] >=
+                                           self._stagger_duration), CombatState.RETREAT)
+            retreat = (state == CombatState.RETREAT) & live
+            self._enter_state(side, retreat & (self._state_timer[:, side] >=
+                                              self._retreat_duration), CombatState.IDLE)
+            ended = (state == CombatState.ATTACK) & live & (
+                self._state_timer[:, side] >= self._attack_duration)
+            self._enter_state(side, ended, CombatState.RECOVER)
+            self._recover_timer[ended, side] = self._sample_duration(
+                self._recover_range, int(ended.sum()))
+            recovering = (state == CombatState.RECOVER) & live
+            self._enter_state(side, recovering & (self._recover_timer[:, side] <= 0),
+                              CombatState.IDLE)
+            deciding = ((state == CombatState.IDLE) |
+                        (state == CombatState.APPROACH)) & live
+            far = distance > self._attack_range
+            self._enter_state(side, deciding & far, CombatState.APPROACH)
+            ready = deciding & ~far & (self._attack_cooldown[:, side] <= 0)
+            # Sequential reservation avoids both controllers starting in one tick.
+            ready &= self._combat_state[:, 1 - side] != CombatState.ATTACK
+            self._enter_state(side, deciding & ~far & ~ready, CombatState.IDLE)
+            self._enter_state(side, ready, CombatState.ATTACK)
+            self._attack_cooldown[ready, side] = self._attack_duration + self._sample_duration(
+                self._attack_cooldown_range, int(ready.sum()))
+            consumed = self._attack_hit_consumed if side == 0 else self._opponent_punch_hit_consumed
+            consumed[ready] = False
 
-        fighter_id = self._get_char_id()
-        root_pos, root_rot, root_vel, root_ang_vel, joint_rot, dof_vel = \
-            self._punch_motion_lib.calc_motion_frame(
-                self._punch_motion_ids, self._punch_time_buf)
-
-        root_pos = torch_util.quat_rotate(self._punch_yaw_quat, root_pos)
-        root_pos += self._punch_root_offset
-        root_rot = torch_util.quat_mul(self._punch_yaw_quat, root_rot)
-        root_vel = torch_util.quat_rotate(self._punch_yaw_quat, root_vel)
-        root_ang_vel = torch_util.quat_rotate(self._punch_yaw_quat, root_ang_vel)
-        dof_pos = self._punch_motion_lib.joint_rot_to_dof(joint_rot)
-        body_pos, body_rot = self._kin_char_model.forward_kinematics(
-            root_pos, root_rot, joint_rot)
-
-        self._engine.set_root_pos(None, fighter_id, root_pos)
-        self._engine.set_root_rot(None, fighter_id, root_rot)
-        self._engine.set_root_vel(None, fighter_id, root_vel)
-        self._engine.set_root_ang_vel(None, fighter_id, root_ang_vel)
-        self._engine.set_dof_pos(None, fighter_id, dof_pos)
-        self._engine.set_dof_vel(None, fighter_id, dof_vel)
-        self._engine.set_body_pos(None, fighter_id, body_pos)
-        self._engine.set_body_rot(None, fighter_id, body_rot)
-        return
+    def _update_punch_demo(self):
+        self._pose_combatant(0, self._get_char_id(), self._punch_motion_lib,
+                             self._punch_motion_ids, self._attack_active_buf)
 
     def _update_opponent_punch(self):
-        dt = self._engine.get_timestep()
-        prev_time = self._opponent_punch_time_buf.clone()
-        self._opponent_punch_time_buf[:] = torch.remainder(
-            self._opponent_punch_time_buf + dt, self._opponent_punch_period)
-        wrapped = self._opponent_punch_time_buf < prev_time
-        self._opponent_punch_hit_consumed[wrapped] = False
-        self._opponent_punch_prev_time_buf[:] = prev_time
-        self._opponent_attack_active_buf[:] = torch.logical_and(
-            self._opponent_punch_time_buf >= self._punch_active_start,
-            self._opponent_punch_time_buf <= self._punch_active_end)
+        self._pose_combatant(1, self._get_opponent_id(), self._opponent_punch_motion_lib,
+                             self._opponent_punch_motion_ids, self._opponent_attack_active_buf)
 
-        opponent_id = self._get_opponent_id()
-        root_pos, root_rot, root_vel, root_ang_vel, joint_rot, dof_vel = \
-            self._opponent_punch_motion_lib.calc_motion_frame(
-                self._opponent_punch_motion_ids,
-                self._opponent_punch_time_buf)
-        root_pos = torch_util.quat_rotate(
-            self._opponent_punch_yaw_quat, root_pos)
-        root_pos += self._opponent_punch_root_offset
-        root_rot = torch_util.quat_mul(
-            self._opponent_punch_yaw_quat, root_rot)
-        root_vel = torch_util.quat_rotate(self._opponent_punch_yaw_quat, root_vel)
-        root_ang_vel = torch_util.quat_rotate(
-            self._opponent_punch_yaw_quat, root_ang_vel)
-        dof_pos = self._opponent_punch_motion_lib.joint_rot_to_dof(joint_rot)
-        body_pos, body_rot = self._kin_char_model.forward_kinematics(
-            root_pos, root_rot, joint_rot)
+    def _pose_combatant(self, side, obj_id, lib, motion_ids, active):
+        state = self._combat_state[:, side]
+        attacking = state == CombatState.ATTACK
+        time = torch.where(attacking, self._state_timer[:, side], 0.0)
+        active[:] = attacking & (time >= self._punch_active_start) & (time <= self._punch_active_end)
+        pos = self._combat_pos[:, side].clone()
+        delta = self._combat_pos[:, 1 - side, :2] - pos[:, :2]
+        distance = torch.linalg.vector_norm(delta, dim=-1).clamp_min(1e-6)
+        direction = delta / distance.unsqueeze(-1)
+        speed = torch.zeros_like(distance)
+        speed[state == CombatState.APPROACH] = self._approach_speed
+        speed = torch.minimum(speed, (distance - self._attack_range).clamp_min(0) /
+                              self._engine.get_timestep())
+        speed[state == CombatState.RETREAT] = -self._approach_speed
+        speed[state == CombatState.HIT_STUN] = -self._stagger_speed
+        vel = torch.zeros_like(pos)
+        vel[:, :2] = direction * speed.unsqueeze(-1)
+        xmin, xmax, ymin, ymax = self._ring_bounds
+        center = pos.new_tensor([(xmin + xmax) / 2, (ymin + ymax) / 2])
+        near_edge = ((pos[:, 0] < xmin + 0.25) | (pos[:, 0] > xmax - 0.25) |
+                     (pos[:, 1] < ymin + 0.25) | (pos[:, 1] > ymax - 0.25))
+        mobile = (state == CombatState.APPROACH) | (state == CombatState.RETREAT)
+        inward = center - pos[:, :2]
+        inward /= torch.linalg.vector_norm(inward, dim=-1).clamp_min(1e-6).unsqueeze(-1)
+        vel[near_edge & mobile, :2] = inward[near_edge & mobile] * self._approach_speed
+        pos += vel * self._engine.get_timestep()
+        pos[:, 0].clamp_(xmin, xmax)
+        pos[:, 1].clamp_(ymin, ymax)
+        self._combat_pos[:, side] = pos
+        # Clip yaw calibration aligns recorded punch direction with opponent bearing.
+        yaw = torch.atan2(delta[:, 1], delta[:, 0]) + self._punch_demo_yaw
+        axis = torch.zeros_like(pos)
+        axis[:, 2] = 1
+        quat = torch_util.axis_angle_to_quat(axis, yaw)
+        clip_pos, root_rot, clip_vel, root_ang_vel, joint_rot, dof_vel = lib.calc_motion_frame(motion_ids, time)
+        first_pos = lib.calc_motion_frame(motion_ids, torch.zeros_like(time))[0]
+        displacement = torch_util.quat_rotate(quat, clip_pos - first_pos)
+        pos += displacement
+        pos[:, 0].clamp_(xmin, xmax)
+        pos[:, 1].clamp_(ymin, ymax)
+        vel += torch.where(attacking.unsqueeze(-1),
+                           torch_util.quat_rotate(quat, clip_vel), 0.0)
+        root_rot = torch_util.quat_mul(quat, root_rot)
+        root_ang_vel = torch_util.quat_rotate(quat, root_ang_vel)
+        root_ang_vel[~attacking] = 0
+        dof_vel[~attacking] = 0
+        dof_pos = lib.joint_rot_to_dof(joint_rot)
+        alive_ids = (state != CombatState.DOWN).nonzero(as_tuple=False).flatten()
+        body_pos, body_rot = self._kin_char_model.forward_kinematics(pos, root_rot, joint_rot)
+        for setter, value in ((self._engine.set_root_pos, pos),
+                              (self._engine.set_root_rot, root_rot),
+                              (self._engine.set_root_vel, vel),
+                              (self._engine.set_root_ang_vel, root_ang_vel),
+                              (self._engine.set_dof_pos, dof_pos),
+                              (self._engine.set_dof_vel, dof_vel),
+                              (self._engine.set_body_pos, body_pos),
+                              (self._engine.set_body_rot, body_rot)):
+            setter(alive_ids, obj_id, value[alive_ids])
+        down_ids = (state == CombatState.DOWN).nonzero(as_tuple=False).flatten()
+        if len(down_ids):
+            self._apply_knockdown(down_ids, obj_id)
 
-        self._engine.set_root_pos(None, opponent_id, root_pos)
-        self._engine.set_root_rot(None, opponent_id, root_rot)
-        self._engine.set_root_vel(None, opponent_id, root_vel)
-        self._engine.set_root_ang_vel(None, opponent_id, root_ang_vel)
-        self._engine.set_dof_pos(None, opponent_id, dof_pos)
-        self._engine.set_dof_vel(None, opponent_id, dof_vel)
-        self._engine.set_body_pos(None, opponent_id, body_pos)
-        self._engine.set_body_rot(None, opponent_id, body_rot)
-        return
+    def _receive_hit(self, env_ids, side):
+        self._enter_state(side, torch.isin(torch.arange(self.get_num_envs(), device=self._device),
+                                         env_ids), CombatState.HIT_STUN)
+        self._attack_cooldown[env_ids, side] = self._stagger_duration + self._retreat_duration + 1.0
+        active = self._attack_active_buf if side == 0 else self._opponent_attack_active_buf
+        active[env_ids] = False
+        health = self._fighter_health if side == 0 else self._opponent_health
+        down_ids = env_ids[health[env_ids] <= 0]
+        if len(down_ids):
+            self._combat_state[down_ids, side] = CombatState.DOWN
+            self._combat_state[down_ids, 1 - side] = CombatState.IDLE
+            self._attack_active_buf[down_ids] = False
+            self._opponent_attack_active_buf[down_ids] = False
+            self._apply_knockdown(down_ids, self._get_char_id() if side == 0 else self._get_opponent_id())
 
     def _update_hits(self):
         dt = self._engine.get_timestep()
@@ -489,12 +547,10 @@ class CombatEnv(char_env.CharEnv):
             self._attack_hit_consumed[hit_ids] = True
             self._stagger_buf[hit_ids] = self._stagger_duration
 
-            opponent_id = self._get_opponent_id()
-            opponent_vel = self._engine.get_root_vel(opponent_id)[hit_ids].clone()
-            opponent_vel[:, 0] += self._stagger_speed
-            self._engine.set_root_vel(hit_ids, opponent_id, opponent_vel)
+            self._receive_hit(hit_ids, 1)
             self._set_character_color(self._get_opponent_id(),
-                                      [1.0, 0.85, 0.05])
+                                      [1.0, 0.85, 0.05],
+                                      hit_ids[self._opponent_health[hit_ids] > 0])
             knocked_down = self._opponent_health[hit_ids] <= 0.0
             knocked_down_ids = hit_ids[knocked_down]
             if len(knocked_down_ids) > 0:
@@ -545,16 +601,19 @@ class CombatEnv(char_env.CharEnv):
             self._opponent_hit_cooldown_buf[hit_ids] = self._hit_cooldown
             self._opponent_punch_hit_consumed[hit_ids] = True
             self._fighter_stagger_buf[hit_ids] = self._stagger_duration
+            self._receive_hit(hit_ids, 0)
             self._set_character_color(self._get_char_id(),
-                                      [1.0, 0.85, 0.05])
+                                      [1.0, 0.85, 0.05],
+                                      hit_ids[self._fighter_health[hit_ids] > 0])
             Logger.print("FIGHTER HIT! fighter health: {:.1f}".format(
                 float(self._fighter_health[hit_ids[0]].item())))
         return
 
-    def _apply_knockdown(self, env_ids):
-        opponent_id = self._get_opponent_id()
+    def _apply_knockdown(self, env_ids, opponent_id=None):
+        if opponent_id is None:
+            opponent_id = self._get_opponent_id()
         root_pos = self._engine.get_root_pos(opponent_id)[env_ids].clone()
-        root_pos[:, 2] = 0.35
+        root_pos[:, 2] = self._ring_floor_height + 0.35
         axis = torch.zeros([len(env_ids), 3], device=self._device)
         axis[:, 1] = 1.0
         angle = torch.full(
@@ -569,9 +628,12 @@ class CombatEnv(char_env.CharEnv):
         self._engine.set_root_rot(env_ids, opponent_id, root_rot)
         self._engine.set_root_vel(env_ids, opponent_id, 0.0)
         self._engine.set_root_ang_vel(env_ids, opponent_id, 0.0)
+        self._engine.set_dof_vel(env_ids, opponent_id, 0.0)
+        self._engine.set_body_vel(env_ids, opponent_id, 0.0)
+        self._engine.set_body_ang_vel(env_ids, opponent_id, 0.0)
         self._engine.set_body_pos(env_ids, opponent_id, body_pos)
         self._engine.set_body_rot(env_ids, opponent_id, body_rot)
-        self._set_character_color(self._get_opponent_id(), [0.35, 0.08, 0.08])
+        self._set_character_color(opponent_id, [0.35, 0.08, 0.08], env_ids)
         return
 
     def _get_char_color(self):
@@ -579,16 +641,19 @@ class CombatEnv(char_env.CharEnv):
             return np.array([0.35, 0.45, 0.7])
         return np.array([0.5, 0.65, 0.95])
 
-    def _set_character_color(self, obj_id, color):
+    def _set_character_color(self, obj_id, color, env_ids=None):
         if not self._visualize:
             return
         if self._engine.get_name() != "newton":
             return
 
         num_bodies = self._engine.get_obj_num_bodies(obj_id)
-        for body_id in range(num_bodies):
-            self._engine.set_body_color(
-                0, obj_id, body_id, np.asarray(color, dtype=np.float32))
+        if env_ids is None:
+            env_ids = range(self.get_num_envs())
+        for env_id in env_ids:
+            for body_id in range(num_bodies):
+                self._engine.set_body_color(
+                    int(env_id), obj_id, body_id, np.asarray(color, dtype=np.float32))
         return
 
     def _reset_opponent(self, env_ids):
@@ -650,6 +715,24 @@ class CombatEnv(char_env.CharEnv):
 
     def _update_info(self, env_ids=None):
         super()._update_info(env_ids)
+        selection = slice(None) if env_ids is None else env_ids
+        ref_intent, ref_direction, ref_distance, ref_guard = self._boxing_reference.compute(
+            self._engine.get_root_pos(self._get_char_id()),
+            self._engine.get_root_pos(self._get_opponent_id()),
+            self._combat_state[:, 0], self._fighter_health, self._opponent_health)
+        self._info["boxing_reference_intent"] = ref_intent[selection]
+        self._info["boxing_reference_direction"] = ref_direction[selection]
+        self._info["boxing_reference_distance"] = ref_distance[selection]
+        self._info["boxing_reference_guard_target"] = ref_guard[selection]
+        for side, prefix in enumerate(("fighter", "opponent")):
+            self._info[prefix + "_state"] = self._combat_state[selection, side]
+            self._info[prefix + "_attack_cooldown"] = self._attack_cooldown[selection, side]
+            stun = self._fighter_stagger_buf if side == 0 else self._stagger_buf
+            self._info[prefix + "_hit_stun"] = stun[selection]
+        self._info["combat_state_names"] = tuple(state.name for state in CombatState)
+        self._info["fighter_distance"] = torch.linalg.vector_norm(
+            self._engine.get_root_pos(self._get_char_id())[:, :2] -
+            self._engine.get_root_pos(self._get_opponent_id())[:, :2], dim=-1)[selection]
         if env_ids is None:
             self._info["combat_hit"] = self._hit_buf
             self._info["opponent_health"] = self._opponent_health

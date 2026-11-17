@@ -1,0 +1,157 @@
+<mujoco model="boxing_ring">
+  <compiler angle="radian" />
+  <worldbody>
+    <body name="boxing_ring">
+      <geom name="platform" type="box" rgba=".035 .045 .065 1" size="2.38 2.38 0.16" pos="0 0 -0.2" />
+      <geom name="canvas" type="box" rgba=".22 .33 .40 1" size="2.34 2.34 0.02" pos="0 0 -0.02" friction="1 .05 .01" />
+      <geom name="apron_x_-1" type="box" rgba=".08 .12 .18 1" size="0.025 2.36 0.12" pos="-2.39 0 -0.19" />
+      <geom name="apron_y_-1" type="box" rgba=".08 .12 .18 1" size="2.36 0.025 0.12" pos="0 -2.39 -0.19" />
+      <geom name="canvas_border_x_-1" type="box" rgba=".73 .79 .79 1" size="0.016 1.91 0.002" pos="-1.91 0 0.002" contype="0" conaffinity="0" />
+      <geom name="canvas_border_y_-1" type="box" rgba=".73 .79 .79 1" size="1.91 0.016 0.002" pos="0 -1.91 0.002" contype="0" conaffinity="0" />
+      <geom name="apron_x_1" type="box" rgba=".08 .12 .18 1" size="0.025 2.36 0.12" pos="2.39 0 -0.19" />
+      <geom name="apron_y_1" type="box" rgba=".08 .12 .18 1" size="2.36 0.025 0.12" pos="0 2.39 -0.19" />
+      <geom name="canvas_border_x_1" type="box" rgba=".73 .79 .79 1" size="0.016 1.91 0.002" pos="1.91 0 0.002" contype="0" conaffinity="0" />
+      <geom name="canvas_border_y_1" type="box" rgba=".73 .79 .79 1" size="1.91 0.016 0.002" pos="0 1.91 0.002" contype="0" conaffinity="0" />
+      <geom name="post_-1_-1" type="cylinder" rgba=".12 .15 .19 1" size="0.065 0.72" pos="-2.13 -2.13 0.52" />
+      <geom name="post_cap_-1_-1" type="sphere" rgba=".75 .07 .10 1" size="0.075" pos="-2.13 -2.13 1.25" />
+      <geom name="corner_mat_-1_-1" type="box" rgba=".75 .07 .10 1" size="0.24 0.24 0.002" pos="-1.72 -1.72 0.003" contype="0" conaffinity="0" />
+      <geom name="pad_-1_-1_0.4" type="capsule" rgba=".75 .07 .10 1" size="0.095" fromto="-1.98 -1.98 0.325 -1.98 -1.98 0.475" />
+      <geom name="turnbuckle_-1_-1_0.4" type="capsule" rgba=".5 .53 .55 1" size="0.022" fromto="-1.98 -1.98 0.4 -2.13 -2.13 0.4" />
+      <geom name="pad_-1_-1_0.65" type="capsule" rgba=".75 .07 .10 1" size="0.095" fromto="-1.98 -1.98 0.575 -1.98 -1.98 0.725" />
+      <geom name="turnbuckle_-1_-1_0.65" type="capsule" rgba=".5 .53 .55 1" size="0.022" fromto="-1.98 -1.98 0.65 -2.13 -2.13 0.65" />
+      <geom name="pad_-1_-1_0.9" type="capsule" rgba=".75 .07 .10 1" size="0.095" fromto="-1.98 -1.98 0.825 -1.98 -1.98 0.975" />
+      <geom name="turnbuckle_-1_-1_0.9" type="capsule" rgba=".5 .53 .55 1" size="0.022" fromto="-1.98 -1.98 0.9 -2.13 -2.13 0.9" />
+      <geom name="pad_-1_-1_1.15" type="capsule" rgba=".75 .07 .10 1" size="0.095" fromto="-1.98 -1.98 1.075 -1.98 -1.98 1.225" />
+      <geom name="turnbuckle_-1_-1_1.15" type="capsule" rgba=".5 .53 .55 1" size="0.022" fromto="-1.98 -1.98 1.15 -2.13 -2.13 1.15" />
+      <geom name="post_1_1" type="cylinder" rgba=".12 .15 .19 1" size="0.065 0.72" pos="2.13 2.13 0.52" />
+      <geom name="post_cap_1_1" type="sphere" rgba=".07 .25 .70 1" size="0.075" pos="2.13 2.13 1.25" />
+      <geom name="corner_mat_1_1" type="box" rgba=".07 .25 .70 1" size="0.24 0.24 0.002" pos="1.72 1.72 0.003" contype="0" conaffinity="0" />
+      <geom name="pad_1_1_0.4" type="capsule" rgba=".07 .25 .70 1" size="0.095" fromto="1.98 1.98 0.325 1.98 1.98 0.475" />
+      <geom name="turnbuckle_1_1_0.4" type="capsule" rgba=".5 .53 .55 1" size="0.022" fromto="1.98 1.98 0.4 2.13 2.13 0.4" />
+      <geom name="pad_1_1_0.65" type="capsule" rgba=".07 .25 .70 1" size="0.095" fromto="1.98 1.98 0.575 1.98 1.98 0.725" />
+      <geom name="turnbuckle_1_1_0.65" type="capsule" rgba=".5 .53 .55 1" size="0.022" fromto="1.98 1.98 0.65 2.13 2.13 0.65" />
+      <geom name="pad_1_1_0.9" type="capsule" rgba=".07 .25 .70 1" size="0.095" fromto="1.98 1.98 0.825 1.98 1.98 0.975" />
+      <geom name="turnbuckle_1_1_0.9" type="capsule" rgba=".5 .53 .55 1" size="0.022" fromto="1.98 1.98 0.9 2.13 2.13 0.9" />
+      <geom name="pad_1_1_1.15" type="capsule" rgba=".07 .25 .70 1" size="0.095" fromto="1.98 1.98 1.075 1.98 1.98 1.225" />
+      <geom name="turnbuckle_1_1_1.15" type="capsule" rgba=".5 .53 .55 1" size="0.022" fromto="1.98 1.98 1.15 2.13 2.13 1.15" />
+      <geom name="post_-1_1" type="cylinder" rgba=".12 .15 .19 1" size="0.065 0.72" pos="-2.13 2.13 0.52" />
+      <geom name="post_cap_-1_1" type="sphere" rgba=".78 .80 .77 1" size="0.075" pos="-2.13 2.13 1.25" />
+      <geom name="corner_mat_-1_1" type="box" rgba=".78 .80 .77 1" size="0.24 0.24 0.002" pos="-1.72 1.72 0.003" contype="0" conaffinity="0" />
+      <geom name="pad_-1_1_0.4" type="capsule" rgba=".78 .80 .77 1" size="0.095" fromto="-1.98 1.98 0.325 -1.98 1.98 0.475" />
+      <geom name="turnbuckle_-1_1_0.4" type="capsule" rgba=".5 .53 .55 1" size="0.022" fromto="-1.98 1.98 0.4 -2.13 2.13 0.4" />
+      <geom name="pad_-1_1_0.65" type="capsule" rgba=".78 .80 .77 1" size="0.095" fromto="-1.98 1.98 0.575 -1.98 1.98 0.725" />
+      <geom name="turnbuckle_-1_1_0.65" type="capsule" rgba=".5 .53 .55 1" size="0.022" fromto="-1.98 1.98 0.65 -2.13 2.13 0.65" />
+      <geom name="pad_-1_1_0.9" type="capsule" rgba=".78 .80 .77 1" size="0.095" fromto="-1.98 1.98 0.825 -1.98 1.98 0.975" />
+      <geom name="turnbuckle_-1_1_0.9" type="capsule" rgba=".5 .53 .55 1" size="0.022" fromto="-1.98 1.98 0.9 -2.13 2.13 0.9" />
+      <geom name="pad_-1_1_1.15" type="capsule" rgba=".78 .80 .77 1" size="0.095" fromto="-1.98 1.98 1.075 -1.98 1.98 1.225" />
+      <geom name="turnbuckle_-1_1_1.15" type="capsule" rgba=".5 .53 .55 1" size="0.022" fromto="-1.98 1.98 1.15 -2.13 2.13 1.15" />
+      <geom name="post_1_-1" type="cylinder" rgba=".12 .15 .19 1" size="0.065 0.72" pos="2.13 -2.13 0.52" />
+      <geom name="post_cap_1_-1" type="sphere" rgba=".78 .80 .77 1" size="0.075" pos="2.13 -2.13 1.25" />
+      <geom name="corner_mat_1_-1" type="box" rgba=".78 .80 .77 1" size="0.24 0.24 0.002" pos="1.72 -1.72 0.003" contype="0" conaffinity="0" />
+      <geom name="pad_1_-1_0.4" type="capsule" rgba=".78 .80 .77 1" size="0.095" fromto="1.98 -1.98 0.325 1.98 -1.98 0.475" />
+      <geom name="turnbuckle_1_-1_0.4" type="capsule" rgba=".5 .53 .55 1" size="0.022" fromto="1.98 -1.98 0.4 2.13 -2.13 0.4" />
+      <geom name="pad_1_-1_0.65" type="capsule" rgba=".78 .80 .77 1" size="0.095" fromto="1.98 -1.98 0.575 1.98 -1.98 0.725" />
+      <geom name="turnbuckle_1_-1_0.65" type="capsule" rgba=".5 .53 .55 1" size="0.022" fromto="1.98 -1.98 0.65 2.13 -2.13 0.65" />
+      <geom name="pad_1_-1_0.9" type="capsule" rgba=".78 .80 .77 1" size="0.095" fromto="1.98 -1.98 0.825 1.98 -1.98 0.975" />
+      <geom name="turnbuckle_1_-1_0.9" type="capsule" rgba=".5 .53 .55 1" size="0.022" fromto="1.98 -1.98 0.9 2.13 -2.13 0.9" />
+      <geom name="pad_1_-1_1.15" type="capsule" rgba=".78 .80 .77 1" size="0.095" fromto="1.98 -1.98 1.075 1.98 -1.98 1.225" />
+      <geom name="turnbuckle_1_-1_1.15" type="capsule" rgba=".5 .53 .55 1" size="0.022" fromto="1.98 -1.98 1.15 2.13 -2.13 1.15" />
+      <geom name="rope_x_0_-1" type="capsule" rgba=".12 .28 .65 1" size="0.024" fromto="-1.98 -1.98 0.4 1.98 -1.98 0.4" />
+      <geom name="rope_y_0_-1" type="capsule" rgba=".12 .28 .65 1" size="0.024" fromto="-1.98 -1.98 0.4 -1.98 1.98 0.4" />
+      <geom name="rope_x_0_1" type="capsule" rgba=".12 .28 .65 1" size="0.024" fromto="-1.98 1.98 0.4 1.98 1.98 0.4" />
+      <geom name="rope_y_0_1" type="capsule" rgba=".12 .28 .65 1" size="0.024" fromto="1.98 -1.98 0.4 1.98 1.98 0.4" />
+      <geom name="rope_x_1_-1" type="capsule" rgba=".85 .87 .84 1" size="0.024" fromto="-1.98 -1.98 0.65 1.98 -1.98 0.65" />
+      <geom name="rope_y_1_-1" type="capsule" rgba=".85 .87 .84 1" size="0.024" fromto="-1.98 -1.98 0.65 -1.98 1.98 0.65" />
+      <geom name="rope_x_1_1" type="capsule" rgba=".85 .87 .84 1" size="0.024" fromto="-1.98 1.98 0.65 1.98 1.98 0.65" />
+      <geom name="rope_y_1_1" type="capsule" rgba=".85 .87 .84 1" size="0.024" fromto="1.98 -1.98 0.65 1.98 1.98 0.65" />
+      <geom name="rope_x_2_-1" type="capsule" rgba=".85 .87 .84 1" size="0.024" fromto="-1.98 -1.98 0.9 1.98 -1.98 0.9" />
+      <geom name="rope_y_2_-1" type="capsule" rgba=".85 .87 .84 1" size="0.024" fromto="-1.98 -1.98 0.9 -1.98 1.98 0.9" />
+      <geom name="rope_x_2_1" type="capsule" rgba=".85 .87 .84 1" size="0.024" fromto="-1.98 1.98 0.9 1.98 1.98 0.9" />
+      <geom name="rope_y_2_1" type="capsule" rgba=".85 .87 .84 1" size="0.024" fromto="1.98 -1.98 0.9 1.98 1.98 0.9" />
+      <geom name="rope_x_3_-1" type="capsule" rgba=".75 .07 .10 1" size="0.024" fromto="-1.98 -1.98 1.15 1.98 -1.98 1.15" />
+      <geom name="rope_y_3_-1" type="capsule" rgba=".75 .07 .10 1" size="0.024" fromto="-1.98 -1.98 1.15 -1.98 1.98 1.15" />
+      <geom name="rope_x_3_1" type="capsule" rgba=".75 .07 .10 1" size="0.024" fromto="-1.98 1.98 1.15 1.98 1.98 1.15" />
+      <geom name="rope_y_3_1" type="capsule" rgba=".75 .07 .10 1" size="0.024" fromto="1.98 -1.98 1.15 1.98 1.98 1.15" />
+      <geom name="strap_x_-1_-0.8" type="box" rgba=".17 .19 .22 1" size="0.018 0.035 0.385" pos="-0.8 -1.98 0.775" contype="0" conaffinity="0" />
+      <geom name="strap_y_-1_-0.8" type="box" rgba=".17 .19 .22 1" size="0.035 0.018 0.385" pos="-1.98 -0.8 0.775" contype="0" conaffinity="0" />
+      <geom name="strap_x_-1_0.8" type="box" rgba=".17 .19 .22 1" size="0.018 0.035 0.385" pos="0.8 -1.98 0.775" contype="0" conaffinity="0" />
+      <geom name="strap_y_-1_0.8" type="box" rgba=".17 .19 .22 1" size="0.035 0.018 0.385" pos="-1.98 0.8 0.775" contype="0" conaffinity="0" />
+      <geom name="strap_x_1_-0.8" type="box" rgba=".17 .19 .22 1" size="0.018 0.035 0.385" pos="-0.8 1.98 0.775" contype="0" conaffinity="0" />
+      <geom name="strap_y_1_-0.8" type="box" rgba=".17 .19 .22 1" size="0.035 0.018 0.385" pos="1.98 -0.8 0.775" contype="0" conaffinity="0" />
+      <geom name="strap_x_1_0.8" type="box" rgba=".17 .19 .22 1" size="0.018 0.035 0.385" pos="0.8 1.98 0.775" contype="0" conaffinity="0" />
+      <geom name="strap_y_1_0.8" type="box" rgba=".17 .19 .22 1" size="0.035 0.018 0.385" pos="1.98 0.8 0.775" contype="0" conaffinity="0" />
+      <geom name="step_0" type="box" rgba=".18 .21 .25 1" size="0.45 0.18 0.04" pos="0 -3.22 -0.32" />
+      <geom name="step_1" type="box" rgba=".18 .21 .25 1" size="0.45 0.18 0.08" pos="0 -2.87 -0.28" />
+      <geom name="step_2" type="box" rgba=".18 .21 .25 1" size="0.45 0.18 0.12" pos="0 -2.52 -0.24" />
+      <geom name="emblem_0" type="box" rgba=".52 .63 .66 1" size="0.23 0.012 0.001" pos="0.33 0 0.002" euler="0 0 -0.785398" contype="0" conaffinity="0" />
+      <geom name="emblem_1" type="box" rgba=".52 .63 .66 1" size="0.23 0.012 0.001" pos="0 0.33 0.002" euler="0 0 0.785398" contype="0" conaffinity="0" />
+      <geom name="emblem_2" type="box" rgba=".52 .63 .66 1" size="0.23 0.012 0.001" pos="-0.33 0 0.002" euler="0 0 -0.785398" contype="0" conaffinity="0" />
+      <geom name="emblem_3" type="box" rgba=".52 .63 .66 1" size="0.23 0.012 0.001" pos="0 -0.33 0.002" euler="0 0 0.785398" contype="0" conaffinity="0" />
+      <geom name="platform_visual" type="box" rgba=".035 .045 .065 1" size="2.38 2.38 0.16" pos="0 0 -0.2" contype="0" conaffinity="0" />
+      <geom name="canvas_visual" type="box" rgba=".22 .33 .40 1" size="2.34 2.34 0.02" pos="0 0 -0.02" friction="1 .05 .01" contype="0" conaffinity="0" />
+      <geom name="apron_x_-1_visual" type="box" rgba=".08 .12 .18 1" size="0.025 2.36 0.12" pos="-2.39 0 -0.19" contype="0" conaffinity="0" />
+      <geom name="apron_y_-1_visual" type="box" rgba=".08 .12 .18 1" size="2.36 0.025 0.12" pos="0 -2.39 -0.19" contype="0" conaffinity="0" />
+      <geom name="apron_x_1_visual" type="box" rgba=".08 .12 .18 1" size="0.025 2.36 0.12" pos="2.39 0 -0.19" contype="0" conaffinity="0" />
+      <geom name="apron_y_1_visual" type="box" rgba=".08 .12 .18 1" size="2.36 0.025 0.12" pos="0 2.39 -0.19" contype="0" conaffinity="0" />
+      <geom name="post_-1_-1_visual" type="cylinder" rgba=".12 .15 .19 1" size="0.065 0.72" pos="-2.13 -2.13 0.52" contype="0" conaffinity="0" />
+      <geom name="post_cap_-1_-1_visual" type="sphere" rgba=".75 .07 .10 1" size="0.075" pos="-2.13 -2.13 1.25" contype="0" conaffinity="0" />
+      <geom name="pad_-1_-1_0.4_visual" type="capsule" rgba=".75 .07 .10 1" size="0.095" fromto="-1.98 -1.98 0.325 -1.98 -1.98 0.475" contype="0" conaffinity="0" />
+      <geom name="turnbuckle_-1_-1_0.4_visual" type="capsule" rgba=".5 .53 .55 1" size="0.022" fromto="-1.98 -1.98 0.4 -2.13 -2.13 0.4" contype="0" conaffinity="0" />
+      <geom name="pad_-1_-1_0.65_visual" type="capsule" rgba=".75 .07 .10 1" size="0.095" fromto="-1.98 -1.98 0.575 -1.98 -1.98 0.725" contype="0" conaffinity="0" />
+      <geom name="turnbuckle_-1_-1_0.65_visual" type="capsule" rgba=".5 .53 .55 1" size="0.022" fromto="-1.98 -1.98 0.65 -2.13 -2.13 0.65" contype="0" conaffinity="0" />
+      <geom name="pad_-1_-1_0.9_visual" type="capsule" rgba=".75 .07 .10 1" size="0.095" fromto="-1.98 -1.98 0.825 -1.98 -1.98 0.975" contype="0" conaffinity="0" />
+      <geom name="turnbuckle_-1_-1_0.9_visual" type="capsule" rgba=".5 .53 .55 1" size="0.022" fromto="-1.98 -1.98 0.9 -2.13 -2.13 0.9" contype="0" conaffinity="0" />
+      <geom name="pad_-1_-1_1.15_visual" type="capsule" rgba=".75 .07 .10 1" size="0.095" fromto="-1.98 -1.98 1.075 -1.98 -1.98 1.225" contype="0" conaffinity="0" />
+      <geom name="turnbuckle_-1_-1_1.15_visual" type="capsule" rgba=".5 .53 .55 1" size="0.022" fromto="-1.98 -1.98 1.15 -2.13 -2.13 1.15" contype="0" conaffinity="0" />
+      <geom name="post_1_1_visual" type="cylinder" rgba=".12 .15 .19 1" size="0.065 0.72" pos="2.13 2.13 0.52" contype="0" conaffinity="0" />
+      <geom name="post_cap_1_1_visual" type="sphere" rgba=".07 .25 .70 1" size="0.075" pos="2.13 2.13 1.25" contype="0" conaffinity="0" />
+      <geom name="pad_1_1_0.4_visual" type="capsule" rgba=".07 .25 .70 1" size="0.095" fromto="1.98 1.98 0.325 1.98 1.98 0.475" contype="0" conaffinity="0" />
+      <geom name="turnbuckle_1_1_0.4_visual" type="capsule" rgba=".5 .53 .55 1" size="0.022" fromto="1.98 1.98 0.4 2.13 2.13 0.4" contype="0" conaffinity="0" />
+      <geom name="pad_1_1_0.65_visual" type="capsule" rgba=".07 .25 .70 1" size="0.095" fromto="1.98 1.98 0.575 1.98 1.98 0.725" contype="0" conaffinity="0" />
+      <geom name="turnbuckle_1_1_0.65_visual" type="capsule" rgba=".5 .53 .55 1" size="0.022" fromto="1.98 1.98 0.65 2.13 2.13 0.65" contype="0" conaffinity="0" />
+      <geom name="pad_1_1_0.9_visual" type="capsule" rgba=".07 .25 .70 1" size="0.095" fromto="1.98 1.98 0.825 1.98 1.98 0.975" contype="0" conaffinity="0" />
+      <geom name="turnbuckle_1_1_0.9_visual" type="capsule" rgba=".5 .53 .55 1" size="0.022" fromto="1.98 1.98 0.9 2.13 2.13 0.9" contype="0" conaffinity="0" />
+      <geom name="pad_1_1_1.15_visual" type="capsule" rgba=".07 .25 .70 1" size="0.095" fromto="1.98 1.98 1.075 1.98 1.98 1.225" contype="0" conaffinity="0" />
+      <geom name="turnbuckle_1_1_1.15_visual" type="capsule" rgba=".5 .53 .55 1" size="0.022" fromto="1.98 1.98 1.15 2.13 2.13 1.15" contype="0" conaffinity="0" />
+      <geom name="post_-1_1_visual" type="cylinder" rgba=".12 .15 .19 1" size="0.065 0.72" pos="-2.13 2.13 0.52" contype="0" conaffinity="0" />
+      <geom name="post_cap_-1_1_visual" type="sphere" rgba=".78 .80 .77 1" size="0.075" pos="-2.13 2.13 1.25" contype="0" conaffinity="0" />
+      <geom name="pad_-1_1_0.4_visual" type="capsule" rgba=".78 .80 .77 1" size="0.095" fromto="-1.98 1.98 0.325 -1.98 1.98 0.475" contype="0" conaffinity="0" />
+      <geom name="turnbuckle_-1_1_0.4_visual" type="capsule" rgba=".5 .53 .55 1" size="0.022" fromto="-1.98 1.98 0.4 -2.13 2.13 0.4" contype="0" conaffinity="0" />
+      <geom name="pad_-1_1_0.65_visual" type="capsule" rgba=".78 .80 .77 1" size="0.095" fromto="-1.98 1.98 0.575 -1.98 1.98 0.725" contype="0" conaffinity="0" />
+      <geom name="turnbuckle_-1_1_0.65_visual" type="capsule" rgba=".5 .53 .55 1" size="0.022" fromto="-1.98 1.98 0.65 -2.13 2.13 0.65" contype="0" conaffinity="0" />
+      <geom name="pad_-1_1_0.9_visual" type="capsule" rgba=".78 .80 .77 1" size="0.095" fromto="-1.98 1.98 0.825 -1.98 1.98 0.975" contype="0" conaffinity="0" />
+      <geom name="turnbuckle_-1_1_0.9_visual" type="capsule" rgba=".5 .53 .55 1" size="0.022" fromto="-1.98 1.98 0.9 -2.13 2.13 0.9" contype="0" conaffinity="0" />
+      <geom name="pad_-1_1_1.15_visual" type="capsule" rgba=".78 .80 .77 1" size="0.095" fromto="-1.98 1.98 1.075 -1.98 1.98 1.225" contype="0" conaffinity="0" />
+      <geom name="turnbuckle_-1_1_1.15_visual" type="capsule" rgba=".5 .53 .55 1" size="0.022" fromto="-1.98 1.98 1.15 -2.13 2.13 1.15" contype="0" conaffinity="0" />
+      <geom name="post_1_-1_visual" type="cylinder" rgba=".12 .15 .19 1" size="0.065 0.72" pos="2.13 -2.13 0.52" contype="0" conaffinity="0" />
+      <geom name="post_cap_1_-1_visual" type="sphere" rgba=".78 .80 .77 1" size="0.075" pos="2.13 -2.13 1.25" contype="0" conaffinity="0" />
+      <geom name="pad_1_-1_0.4_visual" type="capsule" rgba=".78 .80 .77 1" size="0.095" fromto="1.98 -1.98 0.325 1.98 -1.98 0.475" contype="0" conaffinity="0" />
+      <geom name="turnbuckle_1_-1_0.4_visual" type="capsule" rgba=".5 .53 .55 1" size="0.022" fromto="1.98 -1.98 0.4 2.13 -2.13 0.4" contype="0" conaffinity="0" />
+      <geom name="pad_1_-1_0.65_visual" type="capsule" rgba=".78 .80 .77 1" size="0.095" fromto="1.98 -1.98 0.575 1.98 -1.98 0.725" contype="0" conaffinity="0" />
+      <geom name="turnbuckle_1_-1_0.65_visual" type="capsule" rgba=".5 .53 .55 1" size="0.022" fromto="1.98 -1.98 0.65 2.13 -2.13 0.65" contype="0" conaffinity="0" />
+      <geom name="pad_1_-1_0.9_visual" type="capsule" rgba=".78 .80 .77 1" size="0.095" fromto="1.98 -1.98 0.825 1.98 -1.98 0.975" contype="0" conaffinity="0" />
+      <geom name="turnbuckle_1_-1_0.9_visual" type="capsule" rgba=".5 .53 .55 1" size="0.022" fromto="1.98 -1.98 0.9 2.13 -2.13 0.9" contype="0" conaffinity="0" />
+      <geom name="pad_1_-1_1.15_visual" type="capsule" rgba=".78 .80 .77 1" size="0.095" fromto="1.98 -1.98 1.075 1.98 -1.98 1.225" contype="0" conaffinity="0" />
+      <geom name="turnbuckle_1_-1_1.15_visual" type="capsule" rgba=".5 .53 .55 1" size="0.022" fromto="1.98 -1.98 1.15 2.13 -2.13 1.15" contype="0" conaffinity="0" />
+      <geom name="rope_x_0_-1_visual" type="capsule" rgba=".12 .28 .65 1" size="0.024" fromto="-1.98 -1.98 0.4 1.98 -1.98 0.4" contype="0" conaffinity="0" />
+      <geom name="rope_y_0_-1_visual" type="capsule" rgba=".12 .28 .65 1" size="0.024" fromto="-1.98 -1.98 0.4 -1.98 1.98 0.4" contype="0" conaffinity="0" />
+      <geom name="rope_x_0_1_visual" type="capsule" rgba=".12 .28 .65 1" size="0.024" fromto="-1.98 1.98 0.4 1.98 1.98 0.4" contype="0" conaffinity="0" />
+      <geom name="rope_y_0_1_visual" type="capsule" rgba=".12 .28 .65 1" size="0.024" fromto="1.98 -1.98 0.4 1.98 1.98 0.4" contype="0" conaffinity="0" />
+      <geom name="rope_x_1_-1_visual" type="capsule" rgba=".85 .87 .84 1" size="0.024" fromto="-1.98 -1.98 0.65 1.98 -1.98 0.65" contype="0" conaffinity="0" />
+      <geom name="rope_y_1_-1_visual" type="capsule" rgba=".85 .87 .84 1" size="0.024" fromto="-1.98 -1.98 0.65 -1.98 1.98 0.65" contype="0" conaffinity="0" />
+      <geom name="rope_x_1_1_visual" type="capsule" rgba=".85 .87 .84 1" size="0.024" fromto="-1.98 1.98 0.65 1.98 1.98 0.65" contype="0" conaffinity="0" />
+      <geom name="rope_y_1_1_visual" type="capsule" rgba=".85 .87 .84 1" size="0.024" fromto="1.98 -1.98 0.65 1.98 1.98 0.65" contype="0" conaffinity="0" />
+      <geom name="rope_x_2_-1_visual" type="capsule" rgba=".85 .87 .84 1" size="0.024" fromto="-1.98 -1.98 0.9 1.98 -1.98 0.9" contype="0" conaffinity="0" />
+      <geom name="rope_y_2_-1_visual" type="capsule" rgba=".85 .87 .84 1" size="0.024" fromto="-1.98 -1.98 0.9 -1.98 1.98 0.9" contype="0" conaffinity="0" />
+      <geom name="rope_x_2_1_visual" type="capsule" rgba=".85 .87 .84 1" size="0.024" fromto="-1.98 1.98 0.9 1.98 1.98 0.9" contype="0" conaffinity="0" />
+      <geom name="rope_y_2_1_visual" type="capsule" rgba=".85 .87 .84 1" size="0.024" fromto="1.98 -1.98 0.9 1.98 1.98 0.9" contype="0" conaffinity="0" />
+      <geom name="rope_x_3_-1_visual" type="capsule" rgba=".75 .07 .10 1" size="0.024" fromto="-1.98 -1.98 1.15 1.98 -1.98 1.15" contype="0" conaffinity="0" />
+      <geom name="rope_y_3_-1_visual" type="capsule" rgba=".75 .07 .10 1" size="0.024" fromto="-1.98 -1.98 1.15 -1.98 1.98 1.15" contype="0" conaffinity="0" />
+      <geom name="rope_x_3_1_visual" type="capsule" rgba=".75 .07 .10 1" size="0.024" fromto="-1.98 1.98 1.15 1.98 1.98 1.15" contype="0" conaffinity="0" />
+      <geom name="rope_y_3_1_visual" type="capsule" rgba=".75 .07 .10 1" size="0.024" fromto="1.98 -1.98 1.15 1.98 1.98 1.15" contype="0" conaffinity="0" />
+      <geom name="step_0_visual" type="box" rgba=".18 .21 .25 1" size="0.45 0.18 0.04" pos="0 -3.22 -0.32" contype="0" conaffinity="0" />
+      <geom name="step_1_visual" type="box" rgba=".18 .21 .25 1" size="0.45 0.18 0.08" pos="0 -2.87 -0.28" contype="0" conaffinity="0" />
+      <geom name="step_2_visual" type="box" rgba=".18 .21 .25 1" size="0.45 0.18 0.12" pos="0 -2.52 -0.24" contype="0" conaffinity="0" />
+    </body>
+  </worldbody>
+</mujoco>

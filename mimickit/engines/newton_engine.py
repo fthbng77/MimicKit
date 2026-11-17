@@ -4,6 +4,7 @@ wp.config.enable_backward = False
 import newton
 import numpy as np
 import os
+import xml.etree.ElementTree as ET
 import torch
 import pyglet
 
@@ -330,6 +331,7 @@ class NewtonEngine(engine.Engine):
         self._obj_start_pos = []
         self._obj_start_rot = []
         self._obj_colors = []
+        self._obj_asset_files = []
         
         if ("control_mode" in config):
             self._control_mode = engine.ControlMode[config["control_mode"]]
@@ -360,6 +362,7 @@ class NewtonEngine(engine.Engine):
         self._obj_start_pos.append([])
         self._obj_start_rot.append([])
         self._obj_colors.append([])
+        self._obj_asset_files.append([])
 
         return env_id
     
@@ -428,6 +431,7 @@ class NewtonEngine(engine.Engine):
         self._obj_start_pos[env_id].append(start_pos)
         self._obj_start_rot[env_id].append(start_rot)
         self._obj_colors[env_id].append(color)
+        self._obj_asset_files[env_id].append(asset_file)
 
         return obj_id
     
@@ -1099,6 +1103,26 @@ class NewtonEngine(engine.Engine):
                     num_bodies = self.get_obj_num_bodies(obj_id)
                     for body_id in range(num_bodies):
                         self.set_body_color(env_id, obj_id, body_id, obj_col, viewer)
+                else:
+                    # Newton's primitive viewer does not inherit MJCF geom rgba.
+                    # Keep explicit object colors above as the highest priority.
+                    asset_file = self._obj_asset_files[env_id][obj_id]
+                    if not asset_file.endswith(".xml"):
+                        continue
+                    geoms = ET.parse(asset_file).getroot().iter("geom")
+                    colors = {g.get("name"): tuple(float(v) for v in g.get("rgba").split()[:3])
+                              for g in geoms if g.get("name") and g.get("rgba")}
+                    if not colors:
+                        continue
+                    starts = self._sim_model.articulation_start.numpy()
+                    obj_idx = env_id * objs_per_env + obj_id
+                    shape_colors = {}
+                    for body_idx in range(starts[obj_idx], starts[obj_idx + 1]):
+                        for shape_idx in self._sim_model.body_shapes[body_idx]:
+                            name = self._sim_model.shape_label[shape_idx].rsplit("/", 1)[-1]
+                            if name in colors:
+                                shape_colors[shape_idx] = colors[name]
+                    viewer.update_shape_colors(shape_colors)
         return
     
     def _apply_pd_explicit_torque(self, sim_state, control):

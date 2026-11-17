@@ -1,19 +1,19 @@
 env_name: "combat"
 
 char_file: "data/assets/humanoid/humanoid.xml"
-camera_mode: "track"
+camera_mode: "still"
 
 episode_length: 10.0
 global_obs: False
 root_height_obs: True
 zero_center_action: True
 
-init_pose: [0, 0, 0.882416, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1.5708, 0, 0, 0, -1.5708, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-opponent_start_pos: [2.0, 0.0, 0.882416]
+init_pose: [0, 0, 1.242416, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1.5708, 0, 0, 0, -1.5708, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+opponent_start_pos: [2.0, 0.0, 1.242416]
 opponent_start_rot: [0.0, 0.0, 1.0, 0.0]
-ring_bounds: [-1.0, 3.0, -1.5, 1.5]
-ring_rail_height: 0.8
-ring_rail_asset: "data/assets/objects/ring_rail.xml"
+ring_bounds: [-1.0, 3.0, -2.0, 2.0]
+ring_floor_height: 0.36
+ring_asset: "data/assets/objects/boxing_ring.xml"
 
 attack_bodies: ["right_hand", "left_hand", "right_foot", "left_foot"]
 target_bodies: ["torso", "head", "pelvis"]
@@ -28,16 +28,20 @@ contact_force_threshold: 1.0
 
 punch_demo: true
 punch_motion_file: "data/motions/humanoid/humanoid_punch.pkl"
-punch_demo_period: 3.0
 punch_demo_yaw: -0.638
 punch_active_start: 0.70
 punch_active_end: 1.30
 opponent_attack: true
-opponent_punch_period: 3.0
-opponent_punch_phase: 0.0
-opponent_punch_yaw: 2.504
 stagger_duration: 0.35
 stagger_speed: 3.0
 
 key_bodies: ["head", "right_hand", "left_hand", "right_foot", "left_foot"]
 opponent_key_bodies: ["head", "right_hand", "left_hand", "right_foot", "left_foot"]
+
+# Independent state-driven demo controllers (seconds, metres).
+attack_duration: 1.5
+recover_duration: [1.0, 1.5]
+attack_cooldown: [1.5, 3.0]
+attack_range: 1.15
+approach_speed: 0.65
+retreat_duration: 0.5

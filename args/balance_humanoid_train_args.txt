@@ -1,0 +1,10 @@
+--mode train
+--num_envs 128
+--engine_config data/engines/newton_engine.yaml
+--env_config data/envs/balance_humanoid_env.yaml
+--agent_config data/agents/balance_humanoid_ppo_agent.yaml
+--visualize false
+--max_samples 81920
+--save_int_models true
+--rand_seed 7
+--out_dir output/balance_humanoid

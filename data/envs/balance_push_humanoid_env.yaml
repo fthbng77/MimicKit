@@ -1,0 +1,23 @@
+env_name: "balance"
+
+char_file: "data/assets/humanoid/humanoid.xml"
+camera_mode: "track"
+episode_length: 3.0
+global_obs: False
+root_height_obs: True
+zero_center_action: True
+
+init_pose: [0, 0, 0.882416, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1.5708, 0, 0, 0, -1.5708, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+active_joints: ["right_hip", "right_knee", "left_hip", "left_knee"]
+target_root_height: 0.882416
+fall_height: 0.55
+fall_up: 0.25
+upright_reward_weight: 0.5
+action_penalty: 0.002
+reset_joint_noise: 0.08
+reset_root_tilt: 0.10
+
+# Low-speed velocity impulses: 0.20 m/s every 1.0 s, first at 0.75 s.
+push_start_time: 0.75
+push_interval: 1.0
+push_speed: 0.20

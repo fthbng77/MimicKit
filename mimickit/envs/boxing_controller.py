@@ -1,0 +1,46 @@
+"""Deterministic boxing reference controller for residual policies.
+
+Controller supplies high-level intent only. Physics action remains owned by
+CombatEnv, allowing PPO to learn residual corrections around reference motion.
+"""
+
+from enum import IntEnum
+
+import torch
+
+
+class BoxingIntent(IntEnum):
+    GUARD = 0
+    APPROACH = 1
+    JAB = 2
+    RECOVER = 3
+    RETREAT = 4
+
+
+class BoxingReferenceController:
+    def __init__(self, attack_range=1.15, preferred_distance=1.0,
+                 retreat_distance=0.72, guard_height=1.05):
+        self.attack_range = float(attack_range)
+        self.preferred_distance = float(preferred_distance)
+        self.retreat_distance = float(retreat_distance)
+        self.guard_height = float(guard_height)
+
+    def compute(self, fighter_pos, opponent_pos, fighter_state, fighter_health,
+                opponent_health):
+        """Return intent, planar direction, distance and guard target."""
+        delta = opponent_pos[:, :2] - fighter_pos[:, :2]
+        distance = torch.linalg.vector_norm(delta, dim=-1).clamp_min(1e-6)
+        direction = delta / distance[:, None]
+        live = (fighter_health > 0.0) & (opponent_health > 0.0)
+        intent = torch.full_like(fighter_state, BoxingIntent.GUARD)
+        intent[(fighter_state == 1) & live] = BoxingIntent.APPROACH
+        intent[(fighter_state == 2) & live] = BoxingIntent.JAB
+        intent[(fighter_state == 3) & live] = BoxingIntent.RECOVER
+        intent[(fighter_state == 4) & live] = BoxingIntent.RETREAT
+        intent[(distance > self.attack_range) & live & (fighter_state == 0)] = BoxingIntent.APPROACH
+        retreat = (distance < self.retreat_distance) & live & (fighter_state == 0)
+        intent[retreat] = BoxingIntent.RETREAT
+        guard_target = torch.zeros_like(fighter_pos)
+        guard_target[:, :2] = fighter_pos[:, :2] + direction * self.preferred_distance
+        guard_target[:, 2] = self.guard_height
+        return intent, direction, distance, guard_target
