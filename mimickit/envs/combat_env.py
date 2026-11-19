@@ -21,6 +21,7 @@ class CombatState(IntEnum):
     RETREAT = 4
     HIT_STUN = 5
     DOWN = 6
+    BLOCK = 7
 
 
 class CombatEnv(char_env.CharEnv):
@@ -68,6 +69,8 @@ class CombatEnv(char_env.CharEnv):
         self._attack_range = float(env_config.get("attack_range", 1.15))
         self._approach_speed = float(env_config.get("approach_speed", 0.65))
         self._retreat_duration = float(env_config.get("retreat_duration", 0.5))
+        self._block_duration = float(env_config.get("block_duration", 0.35))
+        self._block_damage_scale = float(env_config.get("block_damage_scale", 0.35))
         self._boxing_reference = BoxingReferenceController(
             attack_range=self._attack_range,
             preferred_distance=float(env_config.get("preferred_distance", 1.0)),
@@ -418,6 +421,9 @@ class CombatEnv(char_env.CharEnv):
             retreat = (state == CombatState.RETREAT) & live
             self._enter_state(side, retreat & (self._state_timer[:, side] >=
                                               self._retreat_duration), CombatState.IDLE)
+            blocking = (state == CombatState.BLOCK) & live
+            self._enter_state(side, blocking & (self._state_timer[:, side] >=
+                                               self._block_duration), CombatState.IDLE)
             ended = (state == CombatState.ATTACK) & live & (
                 self._state_timer[:, side] >= self._attack_duration)
             self._enter_state(side, ended, CombatState.RECOVER)
@@ -433,7 +439,9 @@ class CombatEnv(char_env.CharEnv):
             ready = deciding & ~far & (self._attack_cooldown[:, side] <= 0)
             # Sequential reservation avoids both controllers starting in one tick.
             ready &= self._combat_state[:, 1 - side] != CombatState.ATTACK
-            self._enter_state(side, deciding & ~far & ~ready, CombatState.IDLE)
+            threat = deciding & ~far & ~ready & (self._combat_state[:, 1 - side] == CombatState.ATTACK)
+            self._enter_state(side, threat, CombatState.BLOCK)
+            self._enter_state(side, deciding & ~far & ~ready & ~threat, CombatState.IDLE)
             self._enter_state(side, ready, CombatState.ATTACK)
             self._attack_variant[ready, side] = 1 - self._attack_variant[ready, side]
             self._attack_cooldown[ready, side] = self._attack_duration + self._sample_duration(
@@ -508,6 +516,7 @@ class CombatEnv(char_env.CharEnv):
             intent[state == CombatState.ATTACK] = 2
             intent[state == CombatState.RECOVER] = 3
             intent[state == CombatState.RETREAT] = 4
+            intent[state == CombatState.BLOCK] = 5
             reference = self._boxing_reference.reference_action(
                 self._init_dof_pos.expand_as(dof_pos), intent, side,
                 self._reference_joint_ids[side])
@@ -592,12 +601,18 @@ class CombatEnv(char_env.CharEnv):
 
         hit_ids = self._hit_buf.nonzero(as_tuple=False).flatten()
         if len(hit_ids) > 0:
-            self._opponent_health[hit_ids] -= self._hit_damage
+            blocked = self._combat_state[hit_ids, 1] == CombatState.BLOCK
+            damage = torch.where(blocked,
+                                 torch.full_like(self._opponent_health[hit_ids], self._hit_damage * self._block_damage_scale),
+                                 torch.full_like(self._opponent_health[hit_ids], self._hit_damage))
+            self._opponent_health[hit_ids] -= damage
             self._hit_cooldown_buf[hit_ids] = self._hit_cooldown
             self._attack_hit_consumed[hit_ids] = True
             self._stagger_buf[hit_ids] = self._stagger_duration
 
-            self._receive_hit(hit_ids, 1)
+            unblocked_ids = hit_ids[~blocked]
+            if len(unblocked_ids):
+                self._receive_hit(unblocked_ids, 1)
             self._set_character_color(self._get_opponent_id(),
                                       [1.0, 0.85, 0.05],
                                       hit_ids[self._opponent_health[hit_ids] > 0])
@@ -647,11 +662,17 @@ class CombatEnv(char_env.CharEnv):
             torch.logical_and(close_enough, can_hit), moving_fast_enough)
         hit_ids = self._opponent_hit_buf.nonzero(as_tuple=False).flatten()
         if len(hit_ids) > 0:
-            self._fighter_health[hit_ids] -= self._hit_damage
+            blocked = self._combat_state[hit_ids, 0] == CombatState.BLOCK
+            damage = torch.where(blocked,
+                                 torch.full_like(self._fighter_health[hit_ids], self._hit_damage * self._block_damage_scale),
+                                 torch.full_like(self._fighter_health[hit_ids], self._hit_damage))
+            self._fighter_health[hit_ids] -= damage
             self._opponent_hit_cooldown_buf[hit_ids] = self._hit_cooldown
             self._opponent_punch_hit_consumed[hit_ids] = True
             self._fighter_stagger_buf[hit_ids] = self._stagger_duration
-            self._receive_hit(hit_ids, 0)
+            unblocked_ids = hit_ids[~blocked]
+            if len(unblocked_ids):
+                self._receive_hit(unblocked_ids, 0)
             self._set_character_color(self._get_char_id(),
                                       [1.0, 0.85, 0.05],
                                       hit_ids[self._fighter_health[hit_ids] > 0])

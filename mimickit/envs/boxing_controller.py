@@ -15,6 +15,7 @@ class BoxingIntent(IntEnum):
     JAB = 2
     RECOVER = 3
     RETREAT = 4
+    BLOCK = 5
 
 
 class BoxingReferenceController:

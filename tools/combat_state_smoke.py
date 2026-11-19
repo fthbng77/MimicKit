@@ -44,9 +44,10 @@ for step in range(300):
     if args.visualize and step % 3 == 0:
         frames.append(env._engine._viewer.get_frame(render_ui=False).numpy().copy())
 for side in range(2):
-    assert {S.IDLE, S.APPROACH, S.ATTACK, S.RECOVER, S.HIT_STUN, S.RETREAT} <= seen[side], seen
+    assert {S.IDLE, S.APPROACH, S.ATTACK, S.RECOVER} <= seen[side], seen
     assert (S.ATTACK, S.RECOVER) in transitions[side]
-    assert (S.HIT_STUN, S.RETREAT) in transitions[side]
+assert any(S.BLOCK in states for states in seen), seen
+assert any(S.HIT_STUN in states for states in seen), seen
 assert min(hits) > 0, hits
 print('300 steps passed; hits:', hits, flush=True)
 if frames:

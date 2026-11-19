@@ -77,3 +77,7 @@ eklem hedefinde tutulur. Saldırılar sırayla iki varyanta ayrılır: kısa jab
 daha uzun cross. `fighter_attack_variant` ile `opponent_attack_variant` alanları
 hangi varyantın çalıştığını raporlar. Saldırıdan sonra state machine recovery
 ve cooldown uygular; aynı yumruk karesi her simülasyon adımında tekrarlanmaz.
+
+Savunma katmanı eklendi: rakip saldırıdayken karakter `BLOCK` durumuna geçer,
+guard pozu korunur ve gelen hasar `block_damage_scale` ile azaltılır. Tehdit
+bitince karakter tekrar karar döngüsüne döner.
