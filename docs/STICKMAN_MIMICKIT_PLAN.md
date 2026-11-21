@@ -1,5 +1,37 @@
 # MimicKit boks projesi
 
+## Güncel uygulama ve sınırlar
+
+Son dövüş dilimi: stamina yeterliyken her ikinci saldırı iki vuruşluk jab–cross
+kombinasyonudur. İkinci vuruşun isabet hakkı ayrı sıfırlanır; iki vuruş sonrası
+recovery zorunludur. Test iki karakterin de kombinasyonun ikinci vuruşuna
+ulaştığını denetler. Episode 60 saniye; görüntü yakın kadraj ve can/durum/stamina
+bilgisiyle kaydedilir. Çalıştırma: `python tools/combat_state_smoke.py --visualize`.
+
+- İki elli guard, ayrı sol/sağ düz yumruk ve yumuşak guard dönüşü var.
+- Cross sırasında küçük gövde dönüşü var; tam ağırlık aktarımı henüz yok.
+- BLOCK, SLIP ve BACKSTEP kararları dönüşümlü uygulanıyor.
+- Stamina saldırıda 0.25 azalır, dinlenmede saniyede 0.12 yenilenir;
+  0.25 altında yeni saldırı başlamaz.
+- Hareket sırasında alternatif bacak animasyonu var; ayak temasını kilitleyen
+  IK ve fiziksel yürüyüş henüz tamamlanmadı.
+- Yaklaşma ve geri çekilmede kök hızı artık 0.65 saniyelik adım fazında
+  uygulanır; ayak basışında duraklar. Bu kinematik adım kaymayı azaltır,
+  zemin temasını fiziksel olarak sabitlemez.
+- Ayak basışında seçilen destek ayağının dünya koordinatı sabitlenir.
+  `support_raw_slip` düzeltme öncesi, `support_foot_slip` düzeltme sonrası
+  kaymayı raporlar. 900 adımlık testte 289 destek örneği: en yüksek
+  0.0162 m ham kayma, düzeltme sonrası 0.0000 m. Bu kinematik düzeltmedir;
+  Newton temas kuvveti veya tam bacak IK çözümü değildir.
+- Boks hasarı yalnız ellerden gelir. Blokta ölüm de knockdown akışına girer.
+- `tools/boxing_pose_test.py` kol ayrımını, dönüşü ve dirsek yüksekliğini denetler.
+- Combat testi 900 adım, iki taraflı hasar, savunma, kontrollü hit-stun,
+  ring, knockdown ve reset kontrollerini kapsar.
+
+Demo pozu doğrudan uygulandığı için residual PPO fizik kontrolü hâlâ tamamlanmış
+değildir. Bu aşamayı çalışan/öğrenilmiş fiziksel denge olarak değerlendirmeyin.
+Doğal ayak teması ve residual fizik doğrulaması açık işlerdir.
+
 ## Mevcut durum
 
 Combat ortamı Newton üzerinde iki humanoid çalıştırır. Ring, yaklaşma, saldırı
@@ -71,6 +103,13 @@ Ana dosyalar:
 - `tools/combat_state_smoke.py`
 
 ## Son görünür dövüş davranışı
+
+Güncel prototip: reference modu iki kollu guard ile ayrı sol/sağ kol
+yörüngeleri üretir (0: sol jab, 1: sağ düz yumruk). Süreler 0.9/1.2 saniye;
+yumuşak interpolasyon sonunda hedef tam guard'a döner. Kayıtlı klibin kök
+hareketi bu modda uygulanmaz. Menzil 0.65 metreye ayarlanmıştır.
+Bu hâlâ kinematik demo: residual motor komutu pozu yöneten kontrol değildir.
+Cross için gövde/kalça ağırlık aktarımı ve doğal guard kalibrasyonu henüz eksiktir.
 
 Reference control artık varsayılan açık. Saldırı dışı durumlarda karakter guard
 eklem hedefinde tutulur. Saldırılar sırayla iki varyanta ayrılır: kısa jab ve

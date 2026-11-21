@@ -24,7 +24,11 @@ transitions = [set(), set()]
 previous = [S.IDLE, S.IDLE]
 hits = [0, 0]
 frames = []
-for step in range(300):
+combo_seen = [False, False]
+max_support_slip = 0.0
+max_raw_slip = 0.0
+support_samples = 0
+for step in range(900):
     obs, reward, done, info = env.step(action)
     assert torch.isfinite(obs).all()
     states = env._combat_state[0].tolist()
@@ -37,19 +41,41 @@ for step in range(300):
         previous[side] = state
     hits[0] += int(info['combat_hit'][0])
     hits[1] += int(info['fighter_hit'][0])
+    for side in range(2):
+        combo_seen[side] |= bool(env._combo_second[0, side])
+    max_support_slip = max(max_support_slip, float(info['support_foot_slip'].max()))
+    max_raw_slip = max(max_raw_slip, float(info['support_raw_slip'].max()))
+    support_samples += int((env._support_foot >= 0).sum())
     for obj in (env._get_char_id(), env._get_opponent_id()):
         pos = env._engine.get_root_pos(obj)[0]
         xmin, xmax, ymin, ymax = env._ring_bounds
         assert xmin <= pos[0] <= xmax and ymin <= pos[1] <= ymax
     if args.visualize and step % 3 == 0:
-        frames.append(env._engine._viewer.get_frame(render_ui=False).numpy().copy())
+        from PIL import Image, ImageDraw
+        import numpy as np
+        frame = Image.fromarray(env._engine._viewer.get_frame(render_ui=False).numpy().copy())
+        draw = ImageDraw.Draw(frame)
+        draw.rectangle((10, 10, 700, 82), fill=(18, 22, 30))
+        for side, label in enumerate(('BLUE', 'RED')):
+            hp = env._fighter_health if side == 0 else env._opponent_health
+            draw.text((20, 20 + side * 28),
+                      f'{label}  HP {float(hp[0]):.1f}  {S(states[side]).name}  '
+                      f'Stamina {float(env._stamina[0, side]):.2f}  '
+                      f'Combo {bool(env._combo[0, side])}',
+                      fill=(120, 170, 255) if side == 0 else (255, 130, 130))
+        frames.append(np.asarray(frame).copy())
 for side in range(2):
     assert {S.IDLE, S.APPROACH, S.ATTACK, S.RECOVER} <= seen[side], seen
     assert (S.ATTACK, S.RECOVER) in transitions[side]
 assert any(S.BLOCK in states for states in seen), seen
-assert any(S.HIT_STUN in states for states in seen), seen
+assert any(S.SLIP in states for states in seen), seen
+assert any(S.BACKSTEP in states for states in seen), seen
 assert min(hits) > 0, hits
-print('300 steps passed; hits:', hits, flush=True)
+assert all(combo_seen), combo_seen
+assert support_samples > 50, support_samples
+assert max_support_slip < 0.03, max_support_slip
+print('900 steps passed; hits:', hits, flush=True)
+print(f'Support footfall samples: {support_samples}; raw/corrected max slip: {max_raw_slip:.4f}/{max_support_slip:.4f} m', flush=True)
 if frames:
     from util.video import Video
     out = Path('output/combat_humanoid/state_machine.mp4')
@@ -63,6 +89,15 @@ if frames:
         Image.fromarray(frames[i]).save(str(out.with_name(f'state_{i:02d}.png')))
 # Exact-boundary outward velocity, both axes and both characters.
 ids = torch.tensor([0], device='cuda:0')
+# Exercise stun independently of the defense decisions in the free fight.
+for side in range(2):
+    env.reset()
+    env._receive_hit(ids, side)
+    assert env._combat_state[0, side] == S.HIT_STUN
+    for _ in range(12):
+        env.step(action)
+    assert env._combat_state[0, side] == S.RETREAT
+assert ((env._stamina >= 0) & (env._stamina <= 1)).all()
 for obj in (env._get_char_id(), env._get_opponent_id()):
     pos = env._engine.get_root_pos(obj).clone()
     pos[0, :2] = pos.new_tensor([xmin, ymin])

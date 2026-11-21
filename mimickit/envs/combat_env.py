@@ -22,6 +22,8 @@ class CombatState(IntEnum):
     HIT_STUN = 5
     DOWN = 6
     BLOCK = 7
+    SLIP = 8
+    BACKSTEP = 9
 
 
 class CombatEnv(char_env.CharEnv):
@@ -124,11 +126,11 @@ class CombatEnv(char_env.CharEnv):
     def _build_camera(self, env_config):
         xmin, xmax, ymin, ymax = self._ring_bounds
         center = np.array([0.5 * (xmin + xmax), 0.5 * (ymin + ymax),
-                           self._ring_floor_height + 0.45])
+                           self._ring_floor_height + 0.8])
         self._camera = camera.Camera(
             mode=camera.CameraMode[env_config.get("camera_mode", "still")],
             engine=self._engine,
-            pos=center + np.array([4.8, -7.4, 4.8]),
+            pos=center + np.array([3.0, -4.8, 2.8]),
             target=center,
             track_obj_id=self._get_char_id())
 
@@ -181,6 +183,10 @@ class CombatEnv(char_env.CharEnv):
              joint_dof("right_elbow")),
             (joint_dof("left_shoulder"), joint_dof("left_shoulder") + 1,
              joint_dof("left_elbow")))
+        self._torso_dof = joint_dof("abdomen")
+        self._leg_dofs = [(joint_dof(s + "_hip"), joint_dof(s + "_knee"),
+                           joint_dof(s + "_ankle")) for s in ("right", "left")]
+        self._foot_ids = self._build_body_ids_tensor(["right_foot", "left_foot"])
 
         opponent_attack_body_ids = []
         for body_name in self._attack_body_names:
@@ -250,7 +256,16 @@ class CombatEnv(char_env.CharEnv):
         self._attack_cooldown = torch.zeros_like(self._state_timer)
         self._recover_timer = torch.zeros_like(self._state_timer)
         self._attack_variant = torch.zeros((num_envs, 2), device=self._device, dtype=torch.long)
+        self._attack_count = torch.zeros_like(self._attack_variant)
+        self._combo = torch.zeros((num_envs, 2), device=self._device, dtype=torch.bool)
+        self._combo_second = torch.zeros_like(self._combo)
+        self._stamina = torch.ones_like(self._state_timer)
+        self._defense_count = torch.zeros_like(self._attack_variant)
         self._combat_pos = torch.zeros((num_envs, 2, 3), device=self._device)
+        self._support_anchor = torch.zeros((num_envs, 2, 2), device=self._device)
+        self._support_foot = torch.full((num_envs, 2), -1, device=self._device, dtype=torch.long)
+        self._support_slip = torch.zeros((num_envs, 2), device=self._device)
+        self._support_raw_slip = torch.zeros_like(self._support_slip)
 
         if self._punch_demo_enabled:
             self._punch_motion_lib = motion_lib.MotionLib(
@@ -275,12 +290,20 @@ class CombatEnv(char_env.CharEnv):
             self._combat_state[env_ids] = CombatState.IDLE
             self._state_timer[env_ids] = 0.0
             self._recover_timer[env_ids] = 0.0
+            self._stamina[env_ids] = 1.0
+            self._defense_count[env_ids] = 0
+            self._attack_count[env_ids] = 0
+            self._combo[env_ids] = False
+            self._combo_second[env_ids] = False
             self._attack_variant[env_ids, 0] = 0
             self._attack_variant[env_ids, 1] = 1
             self._attack_cooldown[env_ids, 0] = 0.35
             self._attack_cooldown[env_ids, 1] = 1.05
             self._combat_pos[env_ids, 0] = self._engine.get_root_pos(self._get_char_id())[env_ids]
             self._combat_pos[env_ids, 1] = self._engine.get_root_pos(self._get_opponent_id())[env_ids]
+            self._support_foot[env_ids] = -1
+            self._support_slip[env_ids] = 0
+            self._support_raw_slip[env_ids] = 0
             self._set_character_color(self._get_char_id(), self._get_char_color(), env_ids)
             self._set_character_color(self._get_opponent_id(), self._get_opponent_color(), env_ids)
             self._opponent_health[env_ids] = self._max_health
@@ -313,6 +336,12 @@ class CombatEnv(char_env.CharEnv):
     def _apply_action(self, actions):
         if not self._reference_control_enabled:
             return super()._apply_action(actions)
+        if self._punch_demo_enabled:
+            # The demo writes kinematic poses after simulation. Keep motors at
+            # the same pose instead of adding a residual that is then erased.
+            self._engine.set_cmd(self._get_char_id(),
+                                 self._engine.get_dof_pos(self._get_char_id()).clone())
+            return
         intent, _, _, _ = self._boxing_reference.compute(
             self._engine.get_root_pos(self._get_char_id()),
             self._engine.get_root_pos(self._get_opponent_id()),
@@ -403,6 +432,8 @@ class CombatEnv(char_env.CharEnv):
         self._state_timer += dt
         self._attack_cooldown.sub_(dt).clamp_min_(0.0)
         self._recover_timer.sub_(dt).clamp_min_(0.0)
+        resting = self._combat_state != CombatState.ATTACK
+        self._stamina.add_(resting * (0.12 * dt)).clamp_(0, 1)
         distance = torch.linalg.vector_norm(
             self._combat_pos[:, 1, :2] - self._combat_pos[:, 0, :2], dim=-1)
         finished = (self._fighter_health <= 0) | (self._opponent_health <= 0)
@@ -424,8 +455,12 @@ class CombatEnv(char_env.CharEnv):
             blocking = (state == CombatState.BLOCK) & live
             self._enter_state(side, blocking & (self._state_timer[:, side] >=
                                                self._block_duration), CombatState.IDLE)
+            evading = ((state == CombatState.SLIP) | (state == CombatState.BACKSTEP)) & live
+            self._enter_state(side, evading & (self._state_timer[:, side] >= 0.6), CombatState.RECOVER)
+            self._recover_timer[evading & (self._state_timer[:, side] == 0), side] = 0.3
+            duration = torch.where(self._combo[:, side], 2.25, self._attack_duration)
             ended = (state == CombatState.ATTACK) & live & (
-                self._state_timer[:, side] >= self._attack_duration)
+                self._state_timer[:, side] >= duration)
             self._enter_state(side, ended, CombatState.RECOVER)
             self._recover_timer[ended, side] = self._sample_duration(
                 self._recover_range, int(ended.sum()))
@@ -437,14 +472,26 @@ class CombatEnv(char_env.CharEnv):
             far = distance > self._attack_range
             self._enter_state(side, deciding & far, CombatState.APPROACH)
             ready = deciding & ~far & (self._attack_cooldown[:, side] <= 0)
+            ready &= self._stamina[:, side] >= 0.25
             # Sequential reservation avoids both controllers starting in one tick.
             ready &= self._combat_state[:, 1 - side] != CombatState.ATTACK
             threat = deciding & ~far & ~ready & (self._combat_state[:, 1 - side] == CombatState.ATTACK)
             self._enter_state(side, threat, CombatState.BLOCK)
+            choice = self._defense_count[:, side] % 3
+            self._enter_state(side, threat & (choice == 1), CombatState.SLIP)
+            self._enter_state(side, threat & (choice == 2), CombatState.BACKSTEP)
+            self._defense_count[threat, side] += 1
             self._enter_state(side, deciding & ~far & ~ready & ~threat, CombatState.IDLE)
             self._enter_state(side, ready, CombatState.ATTACK)
             self._attack_variant[ready, side] = 1 - self._attack_variant[ready, side]
-            self._attack_cooldown[ready, side] = self._attack_duration + self._sample_duration(
+            self._attack_count[ready, side] += 1
+            self._combo[ready, side] = self._reference_control_enabled & (
+                self._attack_count[ready, side] % 2 == 0) & (self._stamina[ready, side] >= 0.5)
+            self._combo_second[ready, side] = False
+            self._attack_variant[ready & self._combo[:, side], side] = 0
+            self._stamina[ready, side] -= torch.where(self._combo[ready, side], 0.5, 0.25)
+            self._attack_cooldown[ready, side] = torch.where(
+                self._combo[ready, side], 2.25, self._attack_duration) + self._sample_duration(
                 self._attack_cooldown_range, int(ready.sum()))
             consumed = self._attack_hit_consumed if side == 0 else self._opponent_punch_hit_consumed
             consumed[ready] = False
@@ -461,6 +508,14 @@ class CombatEnv(char_env.CharEnv):
         state = self._combat_state[:, side]
         attacking = state == CombatState.ATTACK
         variant = self._attack_variant[:, side]
+        local_time = self._state_timer[:, side].clone()
+        second = attacking & self._combo[:, side] & (local_time >= 1.05)
+        new_second = second & ~self._combo_second[:, side]
+        consumed = self._attack_hit_consumed if side == 0 else self._opponent_punch_hit_consumed
+        consumed[new_second] = False
+        self._combo_second[:, side] |= second
+        variant = torch.where(second, 1, variant)
+        local_time = torch.where(second, local_time - 1.05, local_time)
         punch_time = self._state_timer[:, side] * torch.where(
             variant == 0, torch.full_like(variant, 0.78, dtype=torch.float32),
             torch.ones_like(variant, dtype=torch.float32))
@@ -477,21 +532,27 @@ class CombatEnv(char_env.CharEnv):
         speed = torch.minimum(speed, (distance - self._attack_range).clamp_min(0) /
                               self._engine.get_timestep())
         speed[state == CombatState.RETREAT] = -self._approach_speed
+        speed[state == CombatState.BACKSTEP] = -self._approach_speed
         speed[state == CombatState.HIT_STUN] = -self._stagger_speed
+        mobile = (state == CombatState.APPROACH) | (state == CombatState.RETREAT) | (state == CombatState.BACKSTEP)
+        step_phase = torch.remainder(self._time_buf / 0.65 + side * 0.5, 1.0)
+        # Advance the root during the middle of each step; pause at footfall.
+        step_drive = torch.where((step_phase > 0.15) & (step_phase < 0.65), 2.0, 0.0)
+        speed = torch.where(mobile, speed * step_drive, speed)
         vel = torch.zeros_like(pos)
         vel[:, :2] = direction * speed.unsqueeze(-1)
         xmin, xmax, ymin, ymax = self._ring_bounds
         center = pos.new_tensor([(xmin + xmax) / 2, (ymin + ymax) / 2])
         near_edge = ((pos[:, 0] < xmin + 0.25) | (pos[:, 0] > xmax - 0.25) |
                      (pos[:, 1] < ymin + 0.25) | (pos[:, 1] > ymax - 0.25))
-        mobile = (state == CombatState.APPROACH) | (state == CombatState.RETREAT)
         inward = center - pos[:, :2]
         inward /= torch.linalg.vector_norm(inward, dim=-1).clamp_min(1e-6).unsqueeze(-1)
-        vel[near_edge & mobile, :2] = inward[near_edge & mobile] * self._approach_speed
+        vel[near_edge & mobile, :2] = (inward * (self._approach_speed * step_drive)[:, None])[near_edge & mobile]
         pos += vel * self._engine.get_timestep()
         pos[:, 0].clamp_(xmin, xmax)
         pos[:, 1].clamp_(ymin, ymax)
         self._combat_pos[:, side] = pos
+        reference_pos = pos.clone()
         # Clip yaw calibration aligns recorded punch direction with opponent bearing.
         yaw = torch.atan2(delta[:, 1], delta[:, 0]) + self._punch_demo_yaw
         axis = torch.zeros_like(pos)
@@ -511,20 +572,59 @@ class CombatEnv(char_env.CharEnv):
         dof_vel[~attacking] = 0
         dof_pos = lib.joint_rot_to_dof(joint_rot)
         if self._reference_control_enabled:
-            intent = torch.full_like(state, 0, dtype=torch.long)
-            intent[state == CombatState.APPROACH] = 1
-            intent[state == CombatState.ATTACK] = 2
-            intent[state == CombatState.RECOVER] = 3
-            intent[state == CombatState.RETREAT] = 4
-            intent[state == CombatState.BLOCK] = 5
-            reference = self._boxing_reference.reference_action(
-                self._init_dof_pos.expand_as(dof_pos), intent, side,
-                self._reference_joint_ids[side])
-            guard_mask = (state != CombatState.ATTACK) & (state != CombatState.DOWN)
-            dof_pos[guard_mask] = reference[guard_mask]
+            dof_pos, active[:] = self._boxing_reference.boxing_pose(
+                self._init_dof_pos.expand_as(dof_pos), self._reference_joint_ids,
+                variant, local_time, attacking)
+            # Reference animation owns the pose; do not mix recorded root motion
+            # with a different arm trajectory or pretend motor residuals survive.
+            pos = reference_pos
+            duration = torch.where(variant == 0, 0.9, 1.2)
+            phase = (local_time / duration).clamp(0, 1)
+            turn = torch.sin(torch.pi * phase).square() * attacking
+            dof_pos[:, self._torso_dof + 2] = torch.where(variant == 1, 0.18, -0.07) * turn
+            slip = torch.sin(torch.pi * (self._state_timer[:, side] / 0.6).clamp(0, 1))
+            dof_pos[:, self._torso_dof] = 0.3 * slip * (state == CombatState.SLIP)
+            # Small alternating steps for the kinematic demo. Contact-locked
+            # foot placement remains a separate physical-control task.
+            gait = torch.sin(2 * torch.pi * step_phase) * mobile
+            for leg, (hip, knee, ankle) in enumerate(self._leg_dofs):
+                swing = gait * (1 if leg == 0 else -1)
+                dof_pos[:, hip + 1] = -0.18 * swing
+                dof_pos[:, knee] = 0.24 * swing.clamp_min(0)
+                dof_pos[:, ankle + 1] = -0.12 * swing.clamp_min(0)
+            root_rot = torch_util.axis_angle_to_quat(axis, torch.atan2(delta[:, 1], delta[:, 0]))
+            root_ang_vel = torch.zeros_like(root_ang_vel)
+            dof_vel = (dof_pos - self._engine.get_dof_pos(obj_id)) / self._engine.get_timestep()
             joint_rot = self._kin_char_model.dof_to_rot(dof_pos)
         alive_ids = (state != CombatState.DOWN).nonzero(as_tuple=False).flatten()
         body_pos, body_rot = self._kin_char_model.forward_kinematics(pos, root_rot, joint_rot)
+        if self._reference_control_enabled:
+            # Hold the support foot during footfall. Release while the next
+            # step advances, so the anchor cannot cancel forward travel.
+            planted = mobile & (step_drive == 0)
+            support = torch.where(step_phase < 0.5, 0, 1)
+            rows = torch.arange(self.get_num_envs(), device=self._device)
+            feet = body_pos[:, self._foot_ids, :2]
+            selected = feet[rows, support]
+            new_contact = planted & (self._support_foot[:, side] != support)
+            self._support_anchor[new_contact, side] = selected[new_contact]
+            self._support_raw_slip[:, side] = torch.where(
+                planted, torch.linalg.vector_norm(
+                    selected - self._support_anchor[:, side], dim=-1), 0.0)
+            correction = (self._support_anchor[:, side] - selected).clamp(-0.025, 0.025)
+            correction *= planted.unsqueeze(-1)
+            pos[:, :2] += correction
+            pos[:, 0].clamp_(xmin, xmax)
+            pos[:, 1].clamp_(ymin, ymax)
+            correction = pos[:, :2] - body_pos[:, 0, :2]
+            body_pos[:, :, :2] += correction[:, None, :]
+            self._combat_pos[:, side] = pos
+            self._support_slip[:, side] = torch.where(
+                planted, torch.linalg.vector_norm(
+                    body_pos[rows, self._foot_ids[support], :2] -
+                    self._support_anchor[:, side], dim=-1), 0.0)
+            self._support_foot[:, side] = torch.where(
+                planted, support, torch.full_like(support, -1))
         for setter, value in ((self._engine.set_root_pos, pos),
                               (self._engine.set_root_rot, root_rot),
                               (self._engine.set_root_vel, vel),
@@ -610,7 +710,7 @@ class CombatEnv(char_env.CharEnv):
             self._attack_hit_consumed[hit_ids] = True
             self._stagger_buf[hit_ids] = self._stagger_duration
 
-            unblocked_ids = hit_ids[~blocked]
+            unblocked_ids = hit_ids[(~blocked) | (self._opponent_health[hit_ids] <= 0)]
             if len(unblocked_ids):
                 self._receive_hit(unblocked_ids, 1)
             self._set_character_color(self._get_opponent_id(),
@@ -670,7 +770,7 @@ class CombatEnv(char_env.CharEnv):
             self._opponent_hit_cooldown_buf[hit_ids] = self._hit_cooldown
             self._opponent_punch_hit_consumed[hit_ids] = True
             self._fighter_stagger_buf[hit_ids] = self._stagger_duration
-            unblocked_ids = hit_ids[~blocked]
+            unblocked_ids = hit_ids[(~blocked) | (self._fighter_health[hit_ids] <= 0)]
             if len(unblocked_ids):
                 self._receive_hit(unblocked_ids, 0)
             self._set_character_color(self._get_char_id(),
@@ -801,6 +901,11 @@ class CombatEnv(char_env.CharEnv):
             stun = self._fighter_stagger_buf if side == 0 else self._stagger_buf
             self._info[prefix + "_hit_stun"] = stun[selection]
         self._info["combat_state_names"] = tuple(state.name for state in CombatState)
+        self._info["fighter_stamina"] = self._stamina[selection, 0]
+        self._info["opponent_stamina"] = self._stamina[selection, 1]
+        self._info["boxing_combo"] = self._combo[selection]
+        self._info["support_foot_slip"] = self._support_slip[selection]
+        self._info["support_raw_slip"] = self._support_raw_slip[selection]
         self._info["fighter_distance"] = torch.linalg.vector_norm(
             self._engine.get_root_pos(self._get_char_id())[:, :2] -
             self._engine.get_root_pos(self._get_opponent_id())[:, :2], dim=-1)[selection]

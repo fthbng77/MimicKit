@@ -19,6 +19,30 @@ class BoxingIntent(IntEnum):
 
 
 class BoxingReferenceController:
+    def boxing_pose(self, base, joint_ids, variant, time, attacking):
+        """Two-arm guard and smooth left-jab/right-cross joint trajectories.
+
+        Shoulder coordinates are exponential maps. Variant 0 uses the left
+        arm; variant 1 uses the right. Both trajectories end exactly in guard.
+        """
+        pose = base.clone()
+        duration = torch.where(variant == 0, 0.9, 1.2)
+        phase = (time / duration).clamp(0, 1)
+        progress = torch.where(phase < 0.45, phase / 0.45,
+                               (1 - phase) / 0.55).clamp(0, 1)
+        progress = progress.square() * (3 - 2 * progress)
+        progress *= attacking.to(base.dtype)
+        for arm, (shoulder, _, elbow) in enumerate(joint_ids):
+            sign = 1.0 if arm == 0 else -1.0
+            guard = base.new_tensor([1.1302 * sign, -0.5409, 0.5800 * sign])
+            extended = base.new_tensor([0.0, 0.0, 1.85 * sign])
+            selected = variant == (1 if arm == 0 else 0)
+            blend = progress * selected
+            pose[:, shoulder:shoulder + 3] = guard + blend[:, None] * (extended - guard)
+            pose[:, elbow] = sign * (2.1832 - 2.0332 * blend)
+        active = attacking & (phase >= 0.25) & (phase <= 0.6)
+        return pose, active
+
     def __init__(self, attack_range=1.15, preferred_distance=1.0,
                  retreat_distance=0.72, guard_height=1.05):
         self.attack_range = float(attack_range)
